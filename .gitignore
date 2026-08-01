@@ -1,0 +1,21 @@
+# ClaudeLune - Lunez (luneswan)
+
+# Runtime spill. LuneLive.inc and LuneResolved.inc are tracked deliberately - they
+# ship as placeholders - but anything they leave behind is not.
+Skins/ClaudeLune/@Resources/*.bak
+Skins/ClaudeLune/@Resources/*.tmp
+
+# Build output - published as a release asset, not committed
+dist/
+*.rmskin
+
+# Working notes and commercial material. Kept on disk, never in the repository -
+# named as a folder rather than file by file, so the repository does not even
+# record what those documents are called.
+/_private/
+
+# Editor and OS noise
+.vs/
+.vscode/
+Thumbs.db
+desktop.ini

@@ -1,0 +1,44 @@
+name: tests
+
+# Windows PowerShell only, on purpose. Three of the defects this project shipped
+# were specific to it: Set-Content adding a BOM, CreateFromDirectory writing
+# backslashes into ZIP entry names, and ZipArchive leaving the UTF-8 flag clear.
+# Running the suite under pwsh would have gone green on all three.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Test suite
+        shell: powershell
+        run: .\tests\Invoke-LuneTests.ps1
+
+      - name: Test suite, exhaustive geometry sweep
+        shell: powershell
+        run: .\tests\Invoke-LuneTests.ps1 -Full
+
+      - name: Stress suite
+        shell: powershell
+        run: .\tests\Invoke-LuneStress.ps1
+
+      # The package is what people actually install, so a build that cannot be
+      # produced is a failure like any other.
+      - name: Build the package
+        shell: powershell
+        run: .\build\New-LunePackage.ps1
+
+      - name: Keep the package and its hashes
+        uses: actions/upload-artifact@v4
+        with:
+          name: ClaudeLune-rmskin
+          path: dist/
+          if-no-files-found: error
