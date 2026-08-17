@@ -177,7 +177,7 @@ Every release publishes `SHA256SUMS.txt` next to the package. To check a copy
 somebody gave you:
 
 ```powershell
-Get-FileHash .\ClaudeLune_1.1.0.rmskin -Algorithm SHA256
+Get-FileHash .\ClaudeLune_1.1.1.rmskin -Algorithm SHA256
 ```
 
 If the hash is not the published one, it is not the file that was released.

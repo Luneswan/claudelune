@@ -107,7 +107,7 @@ $ProgressPreference    = 'SilentlyContinue'
 $LuneProduct = 'ClaudeLune'
 $LuneAuthor  = 'Lunez'
 $LuneHandle  = 'luneswan'
-$LuneVersion = '1.1.0'
+$LuneVersion = '1.1.1'
 $LuneStamp   = "; $LuneProduct $LuneVersion - $LuneAuthor ($LuneHandle). Generated file, edits are overwritten."
 
 # ------------------------------------------------------------------- paths ----
@@ -2061,6 +2061,20 @@ try {
             default     { 'Run any claude command to refresh it' }
         }
         $staleNote = "showing the last reading, $ageWord. $fix"
+
+        <#
+        And on the panel itself, not only in the tooltip.
+
+        A signed-out panel draws its last reading: old percentages, a bar that
+        resets "now", a flat chart. It looks broken, because from the outside it
+        is indistinguishable from broken - the one thing that would explain it was
+        hidden behind a hover. The footer carries the instruction instead of a
+        timestamp nobody can act on.
+        #>
+        if ($script:LuneAuthState -ne 'ok') {
+            $ageText = $(if ($script:LuneAuthState -eq 'signedout') { 'signed out - run claude /login' }
+                         else { 'Claude Code not found' })
+        }
     }
 
     # The iOS-style presentation counts down what is LEFT rather than up what is
