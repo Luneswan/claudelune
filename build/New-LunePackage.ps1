@@ -27,7 +27,7 @@
     only meaningful integrity check available for a plain-text skin.
 
 .EXAMPLE
-    .\New-LunePackage.ps1 -Version 1.1.1
+    .\New-LunePackage.ps1 -Version 1.1.2
 
 .NOTES
     Copyright (c) Lunez (luneswan). MIT licence - see LICENSE.
@@ -35,7 +35,7 @@
 
 [CmdletBinding()]
 param(
-    [string]$Version = '1.1.1',
+    [string]$Version = '1.1.2',
     [string]$OutDir  = ''
 )
 

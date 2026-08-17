@@ -39,8 +39,11 @@ A fresh install starts as mostly empty troughs and fills in from there.
 | [Rainmeter](https://www.rainmeter.net/) | 4.5 or newer |
 | [Claude Code](https://claude.com/claude-code) | installed and signed in |
 
-If you have never run it, type `claude` once in any terminal and sign in, or sign
-in through the desktop app. ClaudeLune uses that session and nothing else.
+If you have never run it, type `claude` once in a terminal and sign in.
+ClaudeLune uses that session and nothing else, and finds it on its own.
+
+The terminal part matters: signing in only through the Claude desktop app leaves
+nothing on disk for any other program to read.
 
 ## Install
 
@@ -147,16 +150,26 @@ panel used to say it could.
 
 ### Where it reads the token
 
-Claude Code's own OAuth token, wherever it happens to live. The panel checks
-`CLAUDE_CODE_OAUTH_TOKEN`, then the file that worked last time, then the usual
-locations, then the Windows credential store, then sweeps Claude Code's
-directories for anything holding one. It reads; it never writes to a file Claude
-Code owns.
+There is nothing to set up. The panel finds Claude Code's own OAuth token by
+itself: the file that worked last time, the usual locations, the Windows
+credential store, then a sweep of Claude Code's directories for anything holding
+one. A token is recognised by looking like an Anthropic token, not by the field
+name around it, so a renamed key or a new directory still resolves.
 
 That is deliberate. An earlier version knew one path, Claude Code stopped writing
-there, and the panel sat on a two-week-old reading without ever saying why. If
-you would rather pin it, `claude setup-token` gives you a token to put in
-`CLAUDE_CODE_OAUTH_TOKEN`, and that is checked first.
+there, and the panel sat on a two-week-old reading without ever saying why.
+
+It reads; it never writes to a file Claude Code owns.
+
+**It can only find credentials that exist.** Signing in through the Claude
+desktop app alone is not enough — that session lives in the app's own encrypted
+store, which no other program can read. Run `claude` once in a terminal and
+`/login`, and everything after that is automatic. The panel says so plainly if
+you have not: `signed out - run claude /login`.
+
+For a machine with no interactive sign-in at all, such as a build agent,
+`CLAUDE_CODE_OAUTH_TOKEN` is honoured and checked first. Nobody running this on a
+desktop needs it.
 
 ## Troubleshooting
 
@@ -177,7 +190,7 @@ Every release publishes `SHA256SUMS.txt` next to the package. To check a copy
 somebody gave you:
 
 ```powershell
-Get-FileHash .\ClaudeLune_1.1.1.rmskin -Algorithm SHA256
+Get-FileHash .\ClaudeLune_1.1.2.rmskin -Algorithm SHA256
 ```
 
 If the hash is not the published one, it is not the file that was released.

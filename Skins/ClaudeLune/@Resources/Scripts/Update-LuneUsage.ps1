@@ -107,7 +107,7 @@ $ProgressPreference    = 'SilentlyContinue'
 $LuneProduct = 'ClaudeLune'
 $LuneAuthor  = 'Lunez'
 $LuneHandle  = 'luneswan'
-$LuneVersion = '1.1.1'
+$LuneVersion = '1.1.2'
 $LuneStamp   = "; $LuneProduct $LuneVersion - $LuneAuthor ($LuneHandle). Generated file, edits are overwritten."
 
 # ------------------------------------------------------------------- paths ----
@@ -2278,14 +2278,21 @@ try {
         if ($notDrawn -contains $key) { continue }
         $flat[$key] = $values[$key]
     }
-    Publish-LuneState -Values $flat
-
 
     <#
-    Durable copy, handy for debugging and for any other consumer. Nothing on the
-    panel depends on it, so a failure here must not reach the caller: the figures
-    have already been pushed to the skin by this point, and throwing would turn a
-    completed update into an error state and a red dot.
+    Durable copy, handy for debugging and for any other consumer.
+
+    Written BEFORE the panel is published, which looks backwards for a file the
+    panel does not read. Publishing ends in a !Refresh, the refresh reloads the
+    skin, and the reload tears down the RunCommand measure that owns this process -
+    so anything after it does not run. This write was after it, and only landed on
+    the polls that happened not to change anything. The file sat days behind the
+    panel while claiming to be the durable record of it, and running the script by
+    hand with -NoRefresh - which issues no bang - wrote it correctly every time,
+    which is what kept it hidden.
+
+    A failure here must still not reach the caller. It is a convenience file, and
+    throwing would turn a completed update into an error state and a red dot.
 
     Verified by denying write access to the state directory: the panel updated and
     then the script still exited 1 on this line.
@@ -2304,11 +2311,15 @@ try {
         [System.IO.File]::WriteAllText($temp, $json, (New-Object System.Text.UnicodeEncoding($false, $true)))
         Move-Item -LiteralPath $temp -Destination $LuneExportPath -Force
     } catch {
-        Write-Verbose "Could not write $LuneExportPath ($($_.Exception.Message)); the panel is already updated."
+        Write-Verbose "Could not write $LuneExportPath ($($_.Exception.Message)); publishing anyway."
     }
 
     Write-Verbose ('session={0}% weekly={1}% scoped={2}% plan={3} source={4} samples={5}' -f
         $session.percent, $weekly.percent, $scoped.percent, $account.plan, $source, $samples.Count)
+
+    # Last, because it may not return: the refresh it issues reloads the skin and
+    # kills this process.
+    Publish-LuneState -Values $flat
 } catch {
     Write-Warning $_.Exception.Message
     Publish-LuneState -Values @{ Status = 'error'; StatusOk = 0; ErrorText = $_.Exception.Message }

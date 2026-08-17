@@ -754,6 +754,17 @@ AccountName=Someone Real
     Assert-Lune 'a signed-out panel says to sign in' ($tokenPollerText -match 'claude /login')
     Assert-Lune 'stale advice is chosen by auth state' ($tokenPollerText -match 'LuneAuthState')
 
+    <#
+    Publishing ends in a !Refresh, the refresh reloads the skin, and the reload
+    kills this process - so whatever runs after the publish call runs only on the
+    polls that happen not to change anything. usage.json was written there and
+    spent days behind the panel it claims to record.
+    #>
+    $publishAt = $tokenPollerText.LastIndexOf('Publish-LuneState -Values $flat')
+    $exportAt  = $tokenPollerText.LastIndexOf('$LuneExportPath -Force')
+    Assert-Lune 'usage.json is written before the panel is published' `
+        ($exportAt -gt 0 -and $publishAt -gt $exportAt) "export at $exportAt, publish at $publishAt"
+
     # A gap in the context menu numbering silently truncates the menu.
     $ini = [System.IO.File]::ReadAllText((Join-Path $SkinRoot 'ClaudeLune.ini'))
     $menu = @([regex]::Matches($ini, '(?m)^ContextTitle(\d*)=') | ForEach-Object {
