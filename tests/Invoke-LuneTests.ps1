@@ -684,12 +684,99 @@ AccountName=Someone Real
     $missingMeasures = @($measureTargets | Where-Object { $consumers -notmatch "\[$_\]" })
     Assert-Lune 'every measure a bang addresses exists' ($missingMeasures.Count -eq 0) ($missingMeasures -join ', ')
 
+    # ==========================================================================
+    Start-Group 'The token is found wherever Claude Code puts it'
+
+    <#
+    The panel spent seventeen days on a stale reading because it knew exactly one
+    path to the token and Claude Code stopped writing there. These pin the two
+    properties that make that a non-event: a token is recognised by what it looks
+    like rather than where it sits, and a directory Claude Code does not use today
+    is still searched.
+    #>
+    # Its own name: $Poller above holds this file's TEXT by now, and PowerShell
+    # variable names do not distinguish case.
+    $tokenPoller = Join-Path $SourceRes 'Scripts\Update-LuneUsage.ps1'
+
+    . ([ScriptBlock]::Create((Import-LuneFunction -Path $tokenPoller -Name 'Test-LuneToken')))
+    . ([ScriptBlock]::Create((Import-LuneFunction -Path $tokenPoller -Name 'Read-LuneTokenDocument')))
+    . ([ScriptBlock]::Create((Import-LuneFunction -Path $tokenPoller -Name 'Get-LuneProperty')))
+
+    $shapes = @(
+        @{ why = 'the shape shipped today'
+           json = '{"claudeAiOauth":{"accessToken":"sk-ant-oat01-AAAAAAAAAAAAAAAAAAAA","expiresAt":9999999999999}}' }
+        @{ why = 'the wrapper renamed'
+           json = '{"session":{"access_token":"sk-ant-oat01-BBBBBBBBBBBBBBBBBBBB"}}' }
+        @{ why = 'a list of accounts'
+           json = '{"accounts":[{"auth":{"bearer":"sk-ant-oat01-CCCCCCCCCCCCCCCCCCCC"}}]}' }
+        @{ why = 'a field name nobody has used yet'
+           json = '{"whatever_they_call_it_next":"sk-ant-oat01-DDDDDDDDDDDDDDDDDDDD"}' }
+    )
+    foreach ($shape in $shapes) {
+        $found = Read-LuneTokenDocument ($shape.json | ConvertFrom-Json)
+        Assert-Lune "token read from $($shape.why)" ($null -ne $found -and (Test-LuneToken $found.Token))
+    }
+
+    # Signed out is not the same as relocated, and must not read as a token.
+    Assert-Lune 'a blank token is not a token' `
+        ($null -eq (Read-LuneTokenDocument ('{"claudeAiOauth":{"accessToken":"","expiresAt":0}}' | ConvertFrom-Json)))
+
+    # Every application on the machine has an "accessToken" somewhere. Only
+    # Anthropic's prefix counts, or the sweep adopts the first one it trips over.
+    Assert-Lune 'another application''s token is ignored' `
+        ($null -eq (Read-LuneTokenDocument ('{"accessToken":"ghp_000000000000000000000000000000"}' | ConvertFrom-Json)))
+
+    $expiry = Read-LuneTokenDocument ('{"a":{"token":"sk-ant-oat01-EEEEEEEEEEEEEEEEEEEE","expires_at":123456}}' | ConvertFrom-Json)
+    Assert-Lune 'the expiry beside a token is picked up' ($expiry.Expiry -eq 123456)
+
+    # The sweep, against a directory Claude Code does not write to today.
+    . ([ScriptBlock]::Create((Import-LuneFunction -Path $tokenPoller -Name 'Get-LuneTokenRoots')))
+    . ([ScriptBlock]::Create((Import-LuneFunction -Path $tokenPoller -Name 'Read-LuneJson')))
+    . ([ScriptBlock]::Create((Import-LuneFunction -Path $tokenPoller -Name 'Find-LuneTokenFile')))
+
+    $planted = Join-Path $env:LOCALAPPDATA 'claude-code'
+    $existed = Test-Path -LiteralPath $planted
+    $plantedFile = Join-Path $planted 'lune-selftest.json'
+    try {
+        New-Item -ItemType Directory -Force -Path $planted | Out-Null
+        '{"session":{"access_token":"sk-ant-oat01-FFFFFFFFFFFFFFFFFFFF"}}' |
+            Set-Content -LiteralPath $plantedFile -Encoding ASCII
+        Assert-Lune 'a relocated token file is found by sweeping' `
+            ((Find-LuneTokenFile) -eq $plantedFile)
+    } finally {
+        Remove-Item -LiteralPath $plantedFile -Force -ErrorAction SilentlyContinue
+        if (-not $existed) { Remove-Item -LiteralPath $planted -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    # The advice printed beside a stale reading has to match the reason, or it
+    # sends people to do the one thing that cannot help.
+    $tokenPollerText = [System.IO.File]::ReadAllText($tokenPoller)
+    Assert-Lune 'a signed-out panel says to sign in' ($tokenPollerText -match 'claude /login')
+    Assert-Lune 'stale advice is chosen by auth state' ($tokenPollerText -match 'LuneAuthState')
+
     # A gap in the context menu numbering silently truncates the menu.
     $ini = [System.IO.File]::ReadAllText((Join-Path $SkinRoot 'ClaudeLune.ini'))
     $menu = @([regex]::Matches($ini, '(?m)^ContextTitle(\d*)=') | ForEach-Object {
         if ($_.Groups[1].Value) { [int]$_.Groups[1].Value } else { 1 } } | Sort-Object)
     Assert-Lune 'context menu numbering has no gaps' `
         ($menu.Count -gt 0 -and -not (Compare-Object $menu (1..$menu.Count))) "got $($menu -join ',')"
+}
+<#
+A suite that stops early must not look like a suite that passed.
+
+An exception thrown between groups skipped the summary and left the exit code at
+zero, so a run that got two thirds of the way through and died reported success -
+which is how a broken harness reaches CI green.
+#>
+catch {
+    Write-Host ''
+    Write-Host "SUITE ABORTED: $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host $_.ScriptStackTrace
+    Write-Host "$($script:Passed) passed before the abort" -ForegroundColor Red
+    foreach ($sandbox in $sandboxes) {
+        Remove-Item $sandbox -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    exit 1
 }
 finally {
     foreach ($sandbox in $sandboxes) {

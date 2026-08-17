@@ -17,8 +17,18 @@
 
     Sources, all local and all readable without asking anyone to sign in:
 
-      %USERPROFILE%\.claude\.credentials.json
-          claudeAiOauth { accessToken, expiresAt }
+      The OAuth token, searched for rather than assumed. In order: the
+      CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_AUTH_TOKEN environment variable, the
+      file that answered last time, then
+
+              %USERPROFILE%\.claude\.credentials.json
+              %USERPROFILE%\.config\claude\.credentials.json
+              %CLAUDE_CONFIG_DIR%\.credentials.json
+              %APPDATA%\Claude, %LOCALAPPDATA%\Claude, and the rest
+
+          then the Windows credential store, then a bounded sweep of those
+          directories for any JSON holding one. Claude Code has moved this file
+          before and will again; the sweep is what makes that a non-event.
           Read only. Nothing is ever written back, so this cannot invalidate the
           session it borrows.
 
@@ -97,7 +107,7 @@ $ProgressPreference    = 'SilentlyContinue'
 $LuneProduct = 'ClaudeLune'
 $LuneAuthor  = 'Lunez'
 $LuneHandle  = 'luneswan'
-$LuneVersion = '1.0.0'
+$LuneVersion = '1.1.0'
 $LuneStamp   = "; $LuneProduct $LuneVersion - $LuneAuthor ($LuneHandle). Generated file, edits are overwritten."
 
 # ------------------------------------------------------------------- paths ----
@@ -145,7 +155,9 @@ files take. A file that is genuinely missing or genuinely corrupt still returns
 nothing, promptly.
 #>
 function Read-LuneJson {
-    param([string]$Path, [int]$Attempts = 3)
+    # Quiet is for the token sweep, which reads a few hundred unrelated JSON files
+    # on purpose. Most of them not parsing is the expected result, not news.
+    param([string]$Path, [int]$Attempts = 3, [switch]$Quiet)
 
     if (-not (Test-Path -LiteralPath $Path)) { return $null }
 
@@ -174,7 +186,9 @@ function Read-LuneJson {
         }
 
         if ($attempt -eq $Attempts) {
-            Write-Verbose "Unreadable JSON at ${Path} after $Attempts attempts: $failure"
+            if (-not $Quiet) {
+                Write-Verbose "Unreadable JSON at ${Path} after $Attempts attempts: $failure"
+            }
             return $null
         }
         Start-Sleep -Milliseconds 120
@@ -281,6 +295,13 @@ The settings file used to be read three separate times and the preset file twice
 for values that cannot change while the process is alive.
 #>
 $script:LuneIncCache = @{}
+
+# Where the token came from, and why there wasn't one. Set during the fetch, read
+# when the status line is written: 'ok' until something says otherwise, then
+# 'signedout' (a credentials store exists but holds nothing usable) or 'missing'
+# (no store at all).
+$script:LuneAuthState = 'ok'
+$script:LuneTokenPath = $null
 
 function Read-LuneInc {
     param([string]$Path, [switch]$Fresh)
@@ -770,7 +791,267 @@ function Get-LuneAccount {
 }
 
 # ============================================================= -- luneswan -- ==
-# SECTION 5  The usage endpoint
+# SECTION 5  Finding the token
+# ==============================================================================
+
+<#
+Where Claude Code keeps its token is not a fixed address, and this panel used to
+assume it was.
+
+It read %USERPROFILE%\.claude\.credentials.json and nothing else. When Claude
+Code stopped writing the token there, the panel had no way to tell that apart
+from a lapsed session: it found an empty field, served the cached reading, and
+kept doing that for seventeen days without ever saying why.
+
+So the token is searched for. Explicit environment variable first, then the file
+that answered last time, then the known locations, then the Windows credential
+store, then a bounded sweep of the directories Claude Code uses. Whatever answers
+is written into the cache as tokenPath, so the sweep happens once and every later
+poll goes straight to it.
+
+Everything here reads. Nothing writes to any file Claude Code owns.
+#>
+
+# Anthropic's OAuth tokens carry this prefix. Requiring it is what keeps the
+# sweep from adopting some unrelated application's "accessToken" field.
+function Test-LuneToken {
+    param($Value)
+    return (($Value -is [string]) -and ($Value -like 'sk-ant-*'))
+}
+
+<#
+Pulls a token out of a parsed credentials document, whatever shape it is in.
+
+Deliberately not a list of known field names. The first version of this checked
+claudeAiOauth.accessToken and three spellings beside it, which is the same bet
+that broke the panel in the first place, just hedged a little wider - a document
+nesting the token under "session" walked straight past it.
+
+So the document is walked instead, and a value is a token because it looks like
+one. The expiry is whichever timestamp-shaped sibling sits next to it.
+#>
+function Read-LuneTokenDocument {
+    param($Document, [int]$Depth = 0)
+
+    if ($null -eq $Document -or $Depth -gt 6) { return $null }
+
+    if ($Document -is [System.Collections.IEnumerable] -and $Document -isnot [string]) {
+        foreach ($item in $Document) {
+            $found = Read-LuneTokenDocument -Document $item -Depth ($Depth + 1)
+            if ($found) { return $found }
+        }
+        return $null
+    }
+
+    if ($null -eq $Document.PSObject -or -not $Document.PSObject.Properties) { return $null }
+    $properties = @($Document.PSObject.Properties)
+
+    foreach ($property in $properties) {
+        if (-not (Test-LuneToken $property.Value)) { continue }
+
+        # A sibling that names an expiry and holds a number. Milliseconds or
+        # seconds, either spelling: ConvertFrom-LuneEpoch sorts out the units.
+        $expiry = $null
+        foreach ($sibling in $properties) {
+            if ($sibling.Name -notmatch 'expir') { continue }
+            $value = $sibling.Value
+            if ($value -is [string]) { $value = $value -as [double] }
+            if ($value) { $expiry = $value; break }
+        }
+        return @{ Token = $property.Value; Expiry = $expiry }
+    }
+
+    foreach ($property in $properties) {
+        $value = $property.Value
+        if ($null -eq $value -or $value -is [string] -or $value -is [ValueType]) { continue }
+        $found = Read-LuneTokenDocument -Document $value -Depth ($Depth + 1)
+        if ($found) { return $found }
+    }
+    return $null
+}
+
+# Directories Claude Code stores configuration in, on this machine, right now.
+function Get-LuneTokenRoots {
+    $roots = @(
+        $env:CLAUDE_CONFIG_DIR
+        (Join-Path $env:USERPROFILE '.claude')
+        (Join-Path $env:USERPROFILE '.config\claude')
+        (Join-Path $env:USERPROFILE '.local\share\claude')
+        (Join-Path $env:APPDATA    'Claude')
+        (Join-Path $env:APPDATA    'claude-code')
+        (Join-Path $env:APPDATA    'Anthropic')
+        (Join-Path $env:LOCALAPPDATA 'Claude')
+        (Join-Path $env:LOCALAPPDATA 'claude-code')
+        (Join-Path $env:LOCALAPPDATA 'Anthropic')
+    )
+    return @($roots | Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -Unique)
+}
+
+# The filenames worth trying before resorting to a sweep.
+function Get-LuneTokenFiles {
+    $files = @()
+    foreach ($root in (Get-LuneTokenRoots)) {
+        foreach ($name in '.credentials.json', 'credentials.json', '.auth.json', 'auth.json') {
+            $path = Join-Path $root $name
+            if (Test-Path -LiteralPath $path) { $files += $path }
+        }
+    }
+    return @($files | Select-Object -Unique)
+}
+
+<#
+The Windows credential store, in case the token moves out of the filesystem
+altogether - which is where a Windows application would put it next.
+
+Compiled on demand rather than at load, because this only runs during a sweep and
+Add-Type costs more than the rest of a poll put together. Any failure here is a
+source that did not answer, not an error: the sweep carries on to the next one.
+#>
+function Get-LuneTokenFromCredentialStore {
+    try {
+        if (-not ('Lune.Cred' -as [type])) {
+            # Types are written out in full rather than pulled in with
+            # -UsingNamespace: Add-Type compiles with warnings as errors, and an
+            # already-imported namespace is one of the warnings.
+            Add-Type -Namespace 'Lune' -Name 'Cred' -ErrorAction Stop -MemberDefinition @'
+[System.Runtime.InteropServices.DllImport("advapi32.dll",
+    CharSet = System.Runtime.InteropServices.CharSet.Unicode, SetLastError = true)]
+private static extern bool CredEnumerateW(string filter, int flag, out int count, out System.IntPtr creds);
+
+[System.Runtime.InteropServices.DllImport("advapi32.dll")]
+private static extern void CredFree(System.IntPtr buffer);
+
+[System.Runtime.InteropServices.StructLayout(
+    System.Runtime.InteropServices.LayoutKind.Sequential)]
+private struct CREDENTIAL {
+    public int Flags; public int Type; public System.IntPtr TargetName; public System.IntPtr Comment;
+    public long LastWritten; public int CredentialBlobSize; public System.IntPtr CredentialBlob;
+    public int Persist; public int AttributeCount; public System.IntPtr Attributes;
+    public System.IntPtr TargetAlias; public System.IntPtr UserName;
+}
+
+public static string[] Blobs(string match) {
+    var found = new System.Collections.Generic.List<string>();
+    int count; System.IntPtr handle;
+    if (!CredEnumerateW(null, 0, out count, out handle)) { return found.ToArray(); }
+    try {
+        for (int i = 0; i < count; i++) {
+            var entry = (CREDENTIAL)System.Runtime.InteropServices.Marshal.PtrToStructure(
+                System.Runtime.InteropServices.Marshal.ReadIntPtr(handle, i * System.IntPtr.Size),
+                typeof(CREDENTIAL));
+            var target = System.Runtime.InteropServices.Marshal.PtrToStringUni(entry.TargetName);
+            if (target == null) { continue; }
+            if (target.IndexOf(match, System.StringComparison.OrdinalIgnoreCase) < 0) { continue; }
+            if (entry.CredentialBlobSize <= 0) { continue; }
+            var bytes = new byte[entry.CredentialBlobSize];
+            System.Runtime.InteropServices.Marshal.Copy(
+                entry.CredentialBlob, bytes, 0, entry.CredentialBlobSize);
+            found.Add(System.Convert.ToBase64String(bytes));
+        }
+    } finally { CredFree(handle); }
+    return found.ToArray();
+}
+'@
+        }
+    } catch {
+        Write-Verbose "Credential store unavailable: $($_.Exception.Message)"
+        return $null
+    }
+
+    try {
+        foreach ($blob in [Lune.Cred]::Blobs('claude')) {
+            $bytes = [Convert]::FromBase64String($blob)
+            # The blob may be a bare token or a JSON document, stored as UTF-8 or
+            # UTF-16. Matching the token itself covers all four without guessing.
+            foreach ($encoding in ([Text.Encoding]::UTF8), ([Text.Encoding]::Unicode)) {
+                $match = [regex]::Match($encoding.GetString($bytes), 'sk-ant-[A-Za-z0-9_\-]{20,}')
+                if ($match.Success) { return $match.Value }
+            }
+        }
+    } catch {
+        Write-Verbose "Credential store read failed: $($_.Exception.Message)"
+    }
+    return $null
+}
+
+<#
+Last resort: read every JSON file in Claude Code's directories and take the first
+that holds a token.
+
+Newest first, because a token that has just moved is in a file that has just been
+written. Depth and file count are capped so this stays a sweep of a few
+directories rather than a walk of the profile - it runs at most once every ten
+minutes, and only when nothing else answered.
+#>
+function Find-LuneTokenFile {
+    $examined = 0
+    foreach ($root in (Get-LuneTokenRoots)) {
+        $candidates = @()
+        try {
+            $candidates = @(Get-ChildItem -LiteralPath $root -Filter '*.json' -File -Recurse `
+                                -Depth 2 -Force -ErrorAction SilentlyContinue |
+                Where-Object { $_.Length -gt 0 -and $_.Length -lt 262144 } |
+                Sort-Object LastWriteTimeUtc -Descending)
+        } catch { }
+
+        foreach ($file in $candidates) {
+            if ($examined -ge 400) {
+                Write-Verbose 'Token sweep hit its file cap; stopping.'
+                return $null
+            }
+            $examined++
+            if (Read-LuneTokenDocument (Read-LuneJson $file.FullName -Attempts 1 -Quiet)) {
+                Write-Verbose "Token sweep found $($file.FullName) after $examined files."
+                return $file.FullName
+            }
+        }
+    }
+    Write-Verbose "Token sweep found nothing in $examined files."
+    return $null
+}
+
+<#
+Resolves a token from the cheapest source that has one.
+
+Returns the token, where it came from, and whether any credentials file was seen
+at all - the caller needs that last part to tell "Claude Code is signed out" from
+"Claude Code is not installed", which are different problems with different
+answers.
+#>
+function Resolve-LuneToken {
+    param($Cache)
+
+    <#
+    An explicitly supplied token wins outright. `claude setup-token` produces one,
+    and it is the only source that cannot be moved out from under this panel.
+    #>
+    foreach ($name in 'CLAUDE_CODE_OAUTH_TOKEN', 'ANTHROPIC_AUTH_TOKEN') {
+        $value = [Environment]::GetEnvironmentVariable($name)
+        if (Test-LuneToken $value) {
+            return @{ Token = $value; Expiry = $null; Source = "env:$name"; SawStore = $true }
+        }
+    }
+
+    $paths = @()
+    $remembered = if ($Cache) { Get-LuneProperty $Cache 'tokenPath' } else { $null }
+    if ($remembered) { $paths += $remembered }
+    $paths += Get-LuneTokenFiles
+
+    $sawStore = $false
+    foreach ($path in ($paths | Select-Object -Unique)) {
+        if (-not (Test-Path -LiteralPath $path)) { continue }
+        $sawStore = $true
+        $found = Read-LuneTokenDocument (Read-LuneJson $path)
+        if ($found) {
+            return @{ Token = $found.Token; Expiry = $found.Expiry; Source = $path; SawStore = $true }
+        }
+    }
+
+    return @{ Token = $null; Expiry = $null; Source = $null; SawStore = $sawStore }
+}
+
+# ============================================================= -- luneswan -- ==
+# SECTION 5b  The usage endpoint
 # ==============================================================================
 
 <#
@@ -835,6 +1116,27 @@ function Get-LuneUsageReport {
         return $Payload
     }
 
+    <#
+    Merges a few fields into the cache without touching the rest of it.
+
+    Where the token was found has to outlive the poll that found it, or the sweep
+    runs again every time the token goes briefly unreadable. It is bookkeeping,
+    not data: a write that fails costs one repeated sweep.
+    #>
+    function Update-LuneCacheFields {
+        param([hashtable]$Fields)
+        try {
+            $record = Read-LuneJson $cachePath
+            if (-not $record) { $record = [PSCustomObject]@{} }
+            foreach ($key in $Fields.Keys) {
+                $record | Add-Member -NotePropertyName $key -NotePropertyValue $Fields[$key] -Force
+            }
+            Write-LuneJsonFile -Path $cachePath -Json ($record | ConvertTo-Json -Depth 12) | Out-Null
+        } catch {
+            Write-Verbose "Could not update the cache: $($_.Exception.Message)"
+        }
+    }
+
     function Save-LuneCache {
         param($Payload, $At, [int]$Interval, $BlockedUntil)
         $record = [ordered]@{
@@ -843,6 +1145,11 @@ function Get-LuneUsageReport {
             payload   = $Payload
         }
         if ($BlockedUntil) { $record['blockedUntil'] = ConvertTo-LuneEpoch $BlockedUntil }
+        # Carried across a rewrite, so a good fetch does not cost the panel the
+        # location it worked hard to find.
+        $keepPath = if ($script:LuneTokenPath) { $script:LuneTokenPath }
+                    else { Get-LuneProperty $cached 'tokenPath' }
+        if ($keepPath) { $record['tokenPath'] = $keepPath }
         <#
         A cache that cannot be written is a lost optimisation, not a failure.
 
@@ -871,20 +1178,56 @@ function Get-LuneUsageReport {
     shown instead, dated by when they were actually fetched, and replaced the
     moment a real call succeeds.
     #>
-    $credentialPath = Join-Path $env:USERPROFILE '.claude\.credentials.json'
-    $raw   = Read-LuneJson $credentialPath
-    $creds = $null
-    if ($raw) {
-        $creds = Get-LuneProperty $raw 'claudeAiOauth'
-        if (-not $creds) { $creds = $raw }
-    }
-    $token = if ($creds) { Get-LuneProperty $creds 'accessToken' } else { $null }
+    $resolved = Resolve-LuneToken -Cache $cached
+    $token    = $resolved.Token
+    if ($token) { Write-Verbose "Token from $($resolved.Source)." }
 
-    if ($token) {
-        $expiresAt = Get-LuneProperty $creds 'expiresAt'
-        if ($expiresAt -and (ConvertFrom-LuneEpoch ([double]$expiresAt)) -lt [DateTime]::UtcNow) {
+    if ($token -and $resolved.Expiry) {
+        if ((ConvertFrom-LuneEpoch ([double]$resolved.Expiry)) -lt [DateTime]::UtcNow) {
             Write-Verbose 'OAuth token expired.'
             $token = $null
+        }
+    }
+
+    <#
+    Nothing in the usual places. Sweep for the file before giving up, because the
+    usual places are exactly what changes.
+
+    Throttled to once every ten minutes and skipped entirely while a token is
+    working, so the common path never pays for it. A hit is remembered as
+    tokenPath and read directly from then on.
+    #>
+    if (-not $token) {
+        $lastSweep = if ($cached) { Get-LuneProperty $cached 'tokenSweepAt' } else { $null }
+        $sweepDue  = (-not $lastSweep) -or
+                     ((ConvertFrom-LuneEpoch ([double]$lastSweep)) -lt [DateTime]::UtcNow.AddMinutes(-10))
+
+        if ($sweepDue) {
+            $fields = @{ tokenSweepAt = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() }
+
+            $swept = Find-LuneTokenFile
+            if ($swept) {
+                $found = Read-LuneTokenDocument (Read-LuneJson $swept)
+                if ($found) {
+                    $token = $found.Token
+                    $resolved.Expiry = $found.Expiry
+                    $resolved.SawStore = $true
+                    $script:LuneTokenPath = $swept
+                    $fields['tokenPath'] = $swept
+                    Write-Verbose "Token relocated to $swept."
+                }
+            }
+
+            if (-not $token) {
+                $stored = Get-LuneTokenFromCredentialStore
+                if ($stored) {
+                    $token = $stored
+                    $resolved.SawStore = $true
+                    Write-Verbose 'Token found in the Windows credential store.'
+                }
+            }
+
+            Update-LuneCacheFields -Fields $fields
         }
     }
 
@@ -900,11 +1243,14 @@ function Get-LuneUsageReport {
         keeps its promise of only ever reading that file.
 
         Throttled through the cache so a dead token cannot spawn a process on every
-        poll - at most one attempt every five minutes.
+        poll - one attempt every five minutes, and every half hour once an attempt
+        has failed. A signed-out CLI cannot be renewed by asking it again, and at
+        five-minute spacing that was a process launched forever for nothing.
         #>
         $lastAttempt = Get-LuneProperty $cached 'lastRenew'
+        $spacing     = if (Get-LuneProperty $cached 'renewFailed') { 30 } else { 5 }
         $due = (-not $lastAttempt) -or
-               ((ConvertFrom-LuneEpoch ([double]$lastAttempt)) -lt [DateTime]::UtcNow.AddMinutes(-5))
+               ((ConvertFrom-LuneEpoch ([double]$lastAttempt)) -lt [DateTime]::UtcNow.AddMinutes(-$spacing))
 
         if ($due -and (Get-Command claude -ErrorAction SilentlyContinue)) {
             <#
@@ -922,36 +1268,35 @@ function Get-LuneUsageReport {
                 if (-not $renew.WaitForExit(25000)) { try { $renew.Kill() } catch { } }
             } catch { }
 
-            if ($cached) {
-                $cached | Add-Member -NotePropertyName 'lastRenew' `
-                    -NotePropertyValue ([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()) -Force
-                # Only records when renewal was last attempted, to space out
-                # retries. Losing it costs an extra attempt, not the poll.
-                try {
-                    Write-LuneJsonFile -Path $cachePath -Json ($cached | ConvertTo-Json -Depth 12) | Out-Null
-                } catch {
-                    Write-Verbose "Could not record the renewal attempt: $($_.Exception.Message)"
-                }
+            # Only records when renewal was last attempted, to space out retries.
+            # Losing it costs an extra attempt, not the poll.
+            Update-LuneCacheFields -Fields @{
+                lastRenew = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
             }
 
-            # Give it a moment, then look again; if it worked this poll is live.
+            # Give it a moment, then look again - anywhere, not just where the token
+            # used to live, since a renewal is as free to relocate it as anything
+            # else. If it worked, this poll is live.
             Start-Sleep -Milliseconds 2500
-            $rawAgain = Read-LuneJson $credentialPath
-            if ($rawAgain) {
-                $renewed = Get-LuneProperty $rawAgain 'claudeAiOauth'
-                if (-not $renewed) { $renewed = $rawAgain }
-                $newToken  = Get-LuneProperty $renewed 'accessToken'
-                $newExpiry = Get-LuneProperty $renewed 'expiresAt'
-                if ($newToken -and (-not $newExpiry -or (ConvertFrom-LuneEpoch ([double]$newExpiry)) -gt [DateTime]::UtcNow)) {
-                    Write-Verbose 'Renewed.'
-                    $token = $newToken
-                }
+            $again = Resolve-LuneToken -Cache $cached
+            if ($again.Token -and
+                (-not $again.Expiry -or (ConvertFrom-LuneEpoch ([double]$again.Expiry)) -gt [DateTime]::UtcNow)) {
+                Write-Verbose "Renewed; token from $($again.Source)."
+                $token = $again.Token
             }
+            Update-LuneCacheFields -Fields @{ renewFailed = [bool](-not $token) }
         }
     }
 
     if (-not $token) {
-        Write-Verbose 'No usable token; serving the last stored reading.'
+        <#
+        Told apart deliberately. A signed-out CLI and a missing one need different
+        instructions, and the panel used to give the same useless one for both:
+        "run any claude command", which does nothing at all when the answer is
+        "Not logged in".
+        #>
+        $script:LuneAuthState = if ($resolved.SawStore) { 'signedout' } else { 'missing' }
+        Write-Verbose "No usable token ($script:LuneAuthState); serving the last stored reading."
         return (Complete-LuneFetch -Payload $payload -At $cachedAt -Stale $true)
     }
 
@@ -1701,7 +2046,21 @@ try {
     #>
     if ($isStale -eq 1 -and $status -eq 'ok') {
         $status    = 'stale'
-        $staleNote = "showing the last reading, $ageWord. Run any claude command to refresh it"
+        <#
+        The instruction has to match the reason, or it is worse than none.
+
+        "Run any claude command" is right when the token has simply lapsed and
+        wrong when the CLI is signed out - running a command there prints "Not
+        logged in" and changes nothing, which is how a panel sat on a
+        seventeen-day-old reading telling its owner to do the one thing that could
+        not help.
+        #>
+        $fix = switch ($script:LuneAuthState) {
+            'signedout' { 'Claude Code is signed out - run: claude /login' }
+            'missing'   { 'Claude Code was not found - install it and sign in' }
+            default     { 'Run any claude command to refresh it' }
+        }
+        $staleNote = "showing the last reading, $ageWord. $fix"
     }
 
     # The iOS-style presentation counts down what is LEFT rather than up what is

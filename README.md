@@ -141,12 +141,30 @@ stale - showing the last reading, 3d 2h ago. Run any claude command to refresh i
 Amber is the panel waiting. Red is a fault. Run `claude` anything, or click the
 dot, and the next poll brings it current.
 
+If Claude Code is signed out, the tooltip says so and tells you to run
+`claude /login` instead — running an ordinary command cannot help there, and the
+panel used to say it could.
+
+### Where it reads the token
+
+Claude Code's own OAuth token, wherever it happens to live. The panel checks
+`CLAUDE_CODE_OAUTH_TOKEN`, then the file that worked last time, then the usual
+locations, then the Windows credential store, then sweeps Claude Code's
+directories for anything holding one. It reads; it never writes to a file Claude
+Code owns.
+
+That is deliberate. An earlier version knew one path, Claude Code stopped writing
+there, and the panel sat on a two-week-old reading without ever saying why. If
+you would rather pin it, `claude setup-token` gives you a token to put in
+`CLAUDE_CODE_OAUTH_TOKEN`, and that is checked first.
+
 ## Troubleshooting
 
 | What you see | Why |
 |---|---|
 | Blank panel on first load | No poll has finished yet. Give it ten seconds. |
 | Amber dot, "stale" in the tooltip | Not a fault. Claude Code has not been reachable, so the panel is showing its last reading. See below. |
+| Tooltip says Claude Code is signed out | Run `claude /login` in a terminal. The panel picks the token up on its next poll. |
 | Nothing ever loads | Run `claude` once in a terminal to sign in. |
 | Rows for a model you do not have | Right-click to hide them, or use Settings → Rows. |
 | A setting looks wrong after you edited the file | Values are clamped to a usable range. The settings window shows what was actually produced. |
@@ -159,7 +177,7 @@ Every release publishes `SHA256SUMS.txt` next to the package. To check a copy
 somebody gave you:
 
 ```powershell
-Get-FileHash .\ClaudeLune_1.0.0.rmskin -Algorithm SHA256
+Get-FileHash .\ClaudeLune_1.1.0.rmskin -Algorithm SHA256
 ```
 
 If the hash is not the published one, it is not the file that was released.
