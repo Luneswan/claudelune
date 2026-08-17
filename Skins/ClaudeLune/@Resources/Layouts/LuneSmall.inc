@@ -53,6 +53,11 @@ FontSize=#SmallFS#
 FontWeight=600
 FontColor=#Accent#
 Text=#AccountPlan#
+; Bounded: an unbounded String meter grows past the card, and every value
+; here is arbitrary length. ClipString=1 needs both W and H.
+W=(#BarW# * 0.6)
+H=(#SmallFS# * 2)
+ClipString=1
 AntiAlias=1
 DynamicVariables=1
 Group=Live
@@ -151,6 +156,11 @@ FontFace=#FontFace#
 FontSize=#SmallFS#
 FontColor=#Dim#
 Text=#ThirdLabel#
+; Bounded: an unbounded String meter grows past the card, and every value
+; here is arbitrary length. ClipString=1 needs both W and H.
+W=(#BarW# * 0.62)
+H=(#LabelFS# * 2)
+ClipString=1
 AntiAlias=1
 DynamicVariables=1
 Hidden=(1 - #ScopedOn#)

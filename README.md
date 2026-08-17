@@ -165,11 +165,14 @@ It reads; it never writes to a file Claude Code owns.
 desktop app alone is not enough — that session lives in the app's own encrypted
 store, which no other program can read. Run `claude` once in a terminal and
 `/login`, and everything after that is automatic. The panel says so plainly if
-you have not: `signed out - run claude /login`.
+you have not: the footer reads `signed out` and the dot's tooltip tells you what
+to run.
 
-For a machine with no interactive sign-in at all, such as a build agent,
-`CLAUDE_CODE_OAUTH_TOKEN` is honoured and checked first. Nobody running this on a
-desktop needs it.
+`CLAUDE_CODE_OAUTH_TOKEN` is honoured and checked first, but a token from
+`claude setup-token` will not do: that one carries inference scope, and the usage
+endpoint answers 403 to it. Signing in is what produces a session with the scope
+this needs. There is no way to configure around it, which is the other reason the
+panel does not ask you to configure anything.
 
 ## Troubleshooting
 
@@ -190,7 +193,7 @@ Every release publishes `SHA256SUMS.txt` next to the package. To check a copy
 somebody gave you:
 
 ```powershell
-Get-FileHash .\ClaudeLune_1.1.2.rmskin -Algorithm SHA256
+Get-FileHash .\ClaudeLune_1.1.3.rmskin -Algorithm SHA256
 ```
 
 If the hash is not the published one, it is not the file that was released.

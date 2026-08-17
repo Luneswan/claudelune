@@ -74,6 +74,11 @@ FontSize=#SmallFS#
 FontWeight=600
 FontColor=#Accent#
 Text=#AccountPlan#
+; Bounded: an unbounded String meter grows past the card, and every value
+; here is arbitrary length. ClipString=1 needs both W and H.
+W=(#BarW# * 0.4)
+H=(#SmallFS# * 2)
+ClipString=1
 AntiAlias=1
 DynamicVariables=1
 Group=Live
@@ -193,6 +198,11 @@ FontFace=#FontFace#
 FontSize=#LabelFS#
 FontColor=#Text#
 Text=Weekly - #ThirdLabel#
+; Bounded: an unbounded String meter grows past the card, and every value
+; here is arbitrary length. ClipString=1 needs both W and H.
+W=(#BarW# * 0.62)
+H=(#LabelFS# * 2)
+ClipString=1
 AntiAlias=1
 DynamicVariables=1
 Hidden=(1 - #ScopedOn#)
@@ -248,6 +258,11 @@ FontFace=#FontFace#
 FontSize=#SmallFS#
 FontColor=#ScopedColor#
 Text=#ExtraModel# included on your plan
+; Bounded: an unbounded String meter grows past the card, and every value
+; here is arbitrary length. ClipString=1 needs both W and H.
+W=#BarW#
+H=(#SmallFS# * 2)
+ClipString=1
 AntiAlias=1
 DynamicVariables=1
 Hidden=(1 - #ExtraOn#)
@@ -574,6 +589,14 @@ FontFace=#FontFace#
 FontSize=#SmallFS#
 FontColor=#Dim#
 Text=#AccountName#  -  #TokensToday# today  -  #LastUpdated#
+; Bounded: an unbounded String meter grows past the card, and every value
+; here is arbitrary length. ClipString=1 needs both W and H.
+W=#BarW#
+H=(#SmallFS# * 2)
+ClipString=1
+; Bounded and clipped. A String meter with no W grows to fit its text and runs off
+; the card, which the background shape does not follow - and every value on this
+; line is arbitrary length, the account name included.
 AntiAlias=1
 DynamicVariables=1
 Group=Live

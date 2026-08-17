@@ -698,6 +698,7 @@ AccountName=Someone Real
     # variable names do not distinguish case.
     $tokenPoller = Join-Path $SourceRes 'Scripts\Update-LuneUsage.ps1'
 
+    . ([ScriptBlock]::Create((Import-LuneFunction -Path $tokenPoller -Name 'Get-LuneCleanToken')))
     . ([ScriptBlock]::Create((Import-LuneFunction -Path $tokenPoller -Name 'Test-LuneToken')))
     . ([ScriptBlock]::Create((Import-LuneFunction -Path $tokenPoller -Name 'Read-LuneTokenDocument')))
     . ([ScriptBlock]::Create((Import-LuneFunction -Path $tokenPoller -Name 'Get-LuneProperty')))
@@ -728,6 +729,20 @@ AccountName=Someone Real
 
     $expiry = Read-LuneTokenDocument ('{"a":{"token":"sk-ant-oat01-EEEEEEEEEEEEEEEEEEEE","expires_at":123456}}' | ConvertFrom-Json)
     Assert-Lune 'the expiry beside a token is picked up' ($expiry.Expiry -eq 123456)
+
+    <#
+    A token copied out of a terminal arrives with whitespace on it. The strict
+    prefix check refused those in silence, and a machine whose environment
+    variable was set correctly apart from one leading space reported itself
+    signed out.
+    #>
+    $clean = 'sk-ant-oat01-GGGGGGGGGGGGGGGGGGGG'
+    foreach ($messy in @(" $clean", "$clean ", "`t$clean`r`n", """$clean""", "'$clean'", " ""$clean"" ")) {
+        Assert-Lune "a token with stray characters is still read" ((Get-LuneCleanToken $messy) -eq $clean)
+    }
+    Assert-Lune 'whitespace alone is not a token' ($null -eq (Get-LuneCleanToken '   '))
+    Assert-Lune 'the cleaned token is what gets returned' `
+        ((Read-LuneTokenDocument ('{"t":" ' + $clean + ' "}' | ConvertFrom-Json)).Token -eq $clean)
 
     # The sweep, against a directory Claude Code does not write to today.
     . ([ScriptBlock]::Create((Import-LuneFunction -Path $tokenPoller -Name 'Get-LuneTokenRoots')))
@@ -764,6 +779,46 @@ AccountName=Someone Real
     $exportAt  = $tokenPollerText.LastIndexOf('$LuneExportPath -Force')
     Assert-Lune 'usage.json is written before the panel is published' `
         ($exportAt -gt 0 -and $publishAt -gt $exportAt) "export at $exportAt, publish at $publishAt"
+
+    # ==========================================================================
+    Start-Group 'No drawn text can run off the card'
+
+    <#
+    The geometry sweep varies scale factors and checks the resulting numbers. It
+    never varies the LENGTH of what gets drawn, so a String meter with no W passed
+    every one of its 320 configurations and still spilled off the panel the moment
+    a value got longer than the designer assumed. That is how "signed out - run
+    claude /login" ended up hanging over the edge of the card.
+
+    Any meter drawing a value the poller supplies has to be bounded, because the
+    poller's values are not fixed width: the account name is whatever the account
+    is called, and status text changes with the state.
+    #>
+    foreach ($layout in Get-ChildItem (Join-Path $SourceRes 'Layouts') -Filter '*.inc') {
+        $text = [System.IO.File]::ReadAllText($layout.FullName)
+
+        # Split into meter blocks, keep the ones that draw a string.
+        $blocks = [regex]::Split($text, '(?m)^(?=\[)') | Where-Object { $_ -match '(?m)^Meter=String' }
+        foreach ($block in $blocks) {
+            $name = ([regex]::Match($block, '^\[(\w+)\]')).Groups[1].Value
+            if (-not $name) { continue }
+
+            # Only the Text= line matters; a variable inside ToolTipText cannot
+            # overflow anything.
+            $drawn = [regex]::Match($block, '(?m)^Text=(.*)$').Groups[1].Value
+            if ($drawn -notmatch '#(AccountName|LastUpdated|Status|ErrorText|ExtraModel|ThirdLabel|AccountPlan)#') { continue }
+
+            # W and H both, not just W: ClipString=1 needs the pair, and setting
+            # only W leaves the clip undefined rather than bounded.
+            $bounded = ($block -match '(?m)^W=') -and ($block -match '(?m)^H=') -and
+                       ($block -match '(?m)^ClipString=1')
+            Assert-Lune "$($layout.BaseName)/$name is bounded and clipped" $bounded $drawn
+        }
+    }
+
+    # And the value the poller puts there stays short enough to be worth clipping.
+    Assert-Lune 'the signed-out footer value is two words, not a sentence' `
+        ($tokenPollerText -match "'signed out'" -and $tokenPollerText -notmatch "'signed out - run claude /login'")
 
     # A gap in the context menu numbering silently truncates the menu.
     $ini = [System.IO.File]::ReadAllText((Join-Path $SkinRoot 'ClaudeLune.ini'))

@@ -107,7 +107,7 @@ $ProgressPreference    = 'SilentlyContinue'
 $LuneProduct = 'ClaudeLune'
 $LuneAuthor  = 'Lunez'
 $LuneHandle  = 'luneswan'
-$LuneVersion = '1.1.2'
+$LuneVersion = '1.1.3'
 $LuneStamp   = "; $LuneProduct $LuneVersion - $LuneAuthor ($LuneHandle). Generated file, edits are overwritten."
 
 # ------------------------------------------------------------------- paths ----
@@ -812,11 +812,28 @@ poll goes straight to it.
 Everything here reads. Nothing writes to any file Claude Code owns.
 #>
 
-# Anthropic's OAuth tokens carry this prefix. Requiring it is what keeps the
-# sweep from adopting some unrelated application's "accessToken" field.
+<#
+Returns the token, cleaned, or nothing if it is not one.
+
+Anthropic's OAuth tokens carry the sk-ant- prefix, and requiring it is what keeps
+the sweep from adopting some unrelated application's "accessToken" field.
+
+Trimmed first, because a token that arrives with a space on the front is a token.
+Copying one out of a terminal picks up leading whitespace easily, and the strict
+check refused it in silence: the panel reported "signed out" at a machine whose
+environment variable was set correctly apart from one character.
+#>
+function Get-LuneCleanToken {
+    param($Value)
+    if ($Value -isnot [string]) { return $null }
+    $trimmed = $Value.Trim().Trim('"').Trim("'").Trim()
+    if ($trimmed -like 'sk-ant-*') { return $trimmed }
+    return $null
+}
+
 function Test-LuneToken {
     param($Value)
-    return (($Value -is [string]) -and ($Value -like 'sk-ant-*'))
+    return ($null -ne (Get-LuneCleanToken $Value))
 }
 
 <#
@@ -847,7 +864,8 @@ function Read-LuneTokenDocument {
     $properties = @($Document.PSObject.Properties)
 
     foreach ($property in $properties) {
-        if (-not (Test-LuneToken $property.Value)) { continue }
+        $clean = Get-LuneCleanToken $property.Value
+        if (-not $clean) { continue }
 
         # A sibling that names an expiry and holds a number. Milliseconds or
         # seconds, either spelling: ConvertFrom-LuneEpoch sorts out the units.
@@ -858,7 +876,7 @@ function Read-LuneTokenDocument {
             if ($value -is [string]) { $value = $value -as [double] }
             if ($value) { $expiry = $value; break }
         }
-        return @{ Token = $property.Value; Expiry = $expiry }
+        return @{ Token = $clean; Expiry = $expiry }
     }
 
     foreach ($property in $properties) {
@@ -1022,13 +1040,27 @@ function Resolve-LuneToken {
     param($Cache)
 
     <#
-    An explicitly supplied token wins outright. `claude setup-token` produces one,
-    and it is the only source that cannot be moved out from under this panel.
+    An explicitly supplied token wins outright: it is the only source that cannot
+    be moved out from under this panel.
+
+    Note that a token from `claude setup-token` does NOT work here, measured: the
+    usage endpoint returns 403 to it, where a token from a real sign-in succeeds.
+    The setup-token scopes cover inference, not the session this reads. Honoured
+    anyway, because a future token that does carry the scope should be usable
+    without a code change.
     #>
     foreach ($name in 'CLAUDE_CODE_OAUTH_TOKEN', 'ANTHROPIC_AUTH_TOKEN') {
+        # Process scope first, then the user's own setting - a variable set with
+        # setx after Rainmeter started is not in the environment this process
+        # inherited, and asking the user to restart Rainmeter to pick it up is a
+        # worse answer than reading it.
         $value = [Environment]::GetEnvironmentVariable($name)
-        if (Test-LuneToken $value) {
-            return @{ Token = $value; Expiry = $null; Source = "env:$name"; SawStore = $true }
+        if (-not (Get-LuneCleanToken $value)) {
+            try { $value = [Environment]::GetEnvironmentVariable($name, 'User') } catch { }
+        }
+        $clean = Get-LuneCleanToken $value
+        if ($clean) {
+            return @{ Token = $clean; Expiry = $null; Source = "env:$name"; SawStore = $true }
         }
     }
 
@@ -1178,6 +1210,11 @@ function Get-LuneUsageReport {
     shown instead, dated by when they were actually fetched, and replaced the
     moment a real call succeeds.
     #>
+    # Carried over from the poll that established it, so a throttled cycle still
+    # names the reason. Cleared the moment a call succeeds.
+    $remembered = if ($cached) { Get-LuneProperty $cached 'authState' } else { $null }
+    if ($remembered) { $script:LuneAuthState = $remembered }
+
     $resolved = Resolve-LuneToken -Cache $cached
     $token    = $resolved.Token
     if ($token) { Write-Verbose "Token from $($resolved.Source)." }
@@ -1359,13 +1396,36 @@ function Get-LuneUsageReport {
         $next = [Math]::Max($floorSec, [int]($interval * 0.6))
         $now  = [DateTime]::UtcNow
         Save-LuneCache -Payload $response -At $now -Interval $next -BlockedUntil $null
-        $script:LuneInterval = $next
+        # A call that worked settles every auth question this panel can have.
+        $script:LuneAuthState = 'ok'
+        $script:LuneInterval  = $next
         Write-Verbose ("Fetched live; next interval {0}s." -f $next)
 
         return (Complete-LuneFetch -Payload $response -At $now -Stale $false)
     } catch {
         $message = $_.Exception.Message
         Write-Verbose "Usage API failed: $message"
+
+        <#
+        401 and 403 are different answers and need different advice.
+
+        401 is "this is not a token". 403 is "this is a token, and it is not
+        allowed here" - which is what a `claude setup-token` token gets, because
+        its scopes cover inference rather than the session this endpoint reads.
+        Reported as a generic outage, that leaves someone staring at a stale panel
+        having done everything the instructions asked. Measured against both: a
+        made-up token returns 401, a setup-token returns 403.
+        #>
+        <#
+        Recorded, not just set, because a refusal is followed by backoff: the next
+        several polls return the cache before reaching this call at all, and a
+        reason that only exists on the poll that earned it makes the panel alternate
+        between naming the problem and shrugging at it.
+        #>
+        if ($message -match '\b40[13]\b') {
+            $script:LuneAuthState = $(if ($message -match '\b403\b') { 'forbidden' } else { 'signedout' })
+            Update-LuneCacheFields -Fields @{ authState = $script:LuneAuthState }
+        }
 
         <#
         A refusal doubles the wait and is recorded, so the next few polls skip the
@@ -2058,6 +2118,7 @@ try {
         $fix = switch ($script:LuneAuthState) {
             'signedout' { 'Claude Code is signed out - run: claude /login' }
             'missing'   { 'Claude Code was not found - install it and sign in' }
+            'forbidden' { 'the token is not allowed to read usage - sign in with: claude /login' }
             default     { 'Run any claude command to refresh it' }
         }
         $staleNote = "showing the last reading, $ageWord. $fix"
@@ -2068,12 +2129,18 @@ try {
         A signed-out panel draws its last reading: old percentages, a bar that
         resets "now", a flat chart. It looks broken, because from the outside it
         is indistinguishable from broken - the one thing that would explain it was
-        hidden behind a hover. The footer carries the instruction instead of a
-        timestamp nobody can act on.
+        hidden behind a hover.
+
+        Two words, not a sentence. This lands in the footer, which is sized for a
+        timestamp; the first attempt put "signed out - run claude /login" there and
+        it ran off the side of the card. The instruction lives in the tooltip and
+        the dot; the footer only has to say which of the two states this is.
         #>
-        if ($script:LuneAuthState -ne 'ok') {
-            $ageText = $(if ($script:LuneAuthState -eq 'signedout') { 'signed out - run claude /login' }
-                         else { 'Claude Code not found' })
+        $ageText = switch ($script:LuneAuthState) {
+            'signedout' { 'signed out' }
+            'missing'   { 'not installed' }
+            'forbidden' { 'no access' }
+            default     { $ageText }
         }
     }
 
