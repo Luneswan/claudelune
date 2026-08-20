@@ -834,6 +834,8 @@ AccountName=Someone Real
     Assert-Lune 'the sign-in menu item is wired to it' ($iniText -match 'MeasureLuneLogin "Run"')
     # /k, not /c: the window has to stay up for the browser round trip.
     Assert-Lune 'the sign-in terminal is detached so it outlives the measure' ($iniText -match 'start "Claude Code')
+    # auth login is one command; the TUI route made the user type /login themselves.
+    Assert-Lune 'sign-in uses the auth login command' ($iniText -match 'auth login')
 
     # The history file is looked for, not assumed - this machine has no
     # %APPDATA%\Claude at all.

@@ -40,8 +40,7 @@ A fresh install starts as mostly empty troughs and fills in from there.
 | [Claude Code](https://claude.com/claude-code) | installed and signed in |
 
 If you have never run it, right-click the panel and choose **Sign in to Claude
-Code…**. That opens a terminal in Claude Code; type `/login` and finish in the
-browser. ClaudeLune uses that session and nothing else, and finds it on its own
+Code…**. That runs `claude auth login`, which opens the browser. ClaudeLune uses that session and nothing else, and finds it on its own
 from then on.
 
 The terminal part matters: signing in only through the Claude desktop app leaves
@@ -165,8 +164,7 @@ It reads; it never writes to a file Claude Code owns.
 
 **It can only find credentials that exist.** Signing in through the Claude
 desktop app alone is not enough — that session lives in the app's own encrypted
-store, which no other program can read. Run `claude` once in a terminal and
-`/login`, and everything after that is automatic. The panel says so plainly if
+store, which no other program can read. Run `claude auth login` once, and everything after that is automatic. The panel says so plainly if
 you have not: the footer reads `signed out` and the dot's tooltip tells you what
 to run.
 
@@ -184,7 +182,7 @@ leaves nothing on disk for the panel to read. Clear it and sign in again:
 setx CLAUDE_CODE_OAUTH_TOKEN ""
 ```
 
-Then open a new terminal, run `claude`, and type `/login`.
+Then run `claude auth login`.
 ## Troubleshooting
 
 | What you see | Why |
@@ -204,7 +202,7 @@ Every release publishes `SHA256SUMS.txt` next to the package. To check a copy
 somebody gave you:
 
 ```powershell
-Get-FileHash .\ClaudeLune_1.2.2.rmskin -Algorithm SHA256
+Get-FileHash .\ClaudeLune_1.2.3.rmskin -Algorithm SHA256
 ```
 
 If the hash is not the published one, it is not the file that was released.
