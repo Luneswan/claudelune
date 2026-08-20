@@ -19,3 +19,7 @@ dist/
 .vscode/
 Thumbs.db
 desktop.ini
+
+# Merge and patch leftovers
+*.orig
+*.rej

@@ -149,9 +149,9 @@ stale - showing the last reading, 3d 2h ago. Run any claude command to refresh i
 Amber is the panel waiting. Red is a fault. Run `claude` anything, or click the
 dot, and the next poll brings it current.
 
-If Claude Code is signed out, the tooltip says so and tells you to run
-`claude /login` instead — running an ordinary command cannot help there, and the
-panel used to say it could.
+If Claude Code is signed out the tooltip says so and tells you to run
+`claude auth login`. An ordinary command cannot help there, and the panel used
+to say it could.
 
 ### Where it reads the token
 
