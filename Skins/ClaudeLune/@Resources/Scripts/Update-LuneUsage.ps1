@@ -107,7 +107,7 @@ $ProgressPreference    = 'SilentlyContinue'
 $LuneProduct = 'ClaudeLune'
 $LuneAuthor  = 'Lunez'
 $LuneHandle  = 'luneswan'
-$LuneVersion = '1.2.1'
+$LuneVersion = '1.2.2'
 $LuneStamp   = "; $LuneProduct $LuneVersion - $LuneAuthor ($LuneHandle). Generated file, edits are overwritten."
 
 # ------------------------------------------------------------------- paths ----
@@ -1227,6 +1227,32 @@ function Get-LuneUsageReport {
     # names the reason. Cleared the moment a call succeeds.
     $remembered = if ($cached) { Get-LuneProperty $cached 'authState' } else { $null }
     if ($remembered) { $script:LuneAuthState = $remembered }
+
+    <#
+    A sign-in that just happened must not wait out a backoff it did not earn.
+
+    Signing in is what someone does BECAUSE the panel is stuck, and the panel is
+    stuck precisely when it has been refused enough to be waiting a minute between
+    attempts, with a recorded auth state saying it is signed out. So the moment the
+    credential files change, the wait and the verdict are both discarded and this
+    poll goes to the network. Otherwise /login appears to do nothing for up to a
+    minute, which is exactly long enough to conclude it did not work.
+    #>
+    $credStamp = ''
+    foreach ($file in (Get-LuneTokenFiles)) {
+        try { $credStamp += (Get-Item -LiteralPath $file).LastWriteTimeUtc.Ticks.ToString() + ';' } catch { }
+    }
+    $lastStamp = if ($cached) { Get-LuneProperty $cached 'credStamp' } else { $null }
+    if ($credStamp -ne $lastStamp) {
+        if ($lastStamp) {
+            Write-Verbose 'Credentials changed since the last poll; ignoring the current backoff.'
+            $Force = $true
+            $script:LuneAuthState = 'ok'
+            Update-LuneCacheFields -Fields @{ credStamp = $credStamp; authState = '' }
+        } else {
+            Update-LuneCacheFields -Fields @{ credStamp = $credStamp }
+        }
+    }
 
     $resolved = Resolve-LuneToken -Cache $cached
     $token    = $resolved.Token

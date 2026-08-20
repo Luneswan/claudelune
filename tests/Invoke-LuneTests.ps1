@@ -862,6 +862,15 @@ AccountName=Someone Real
         ($tokenPollerText -match "if \(\`$_\.Exception\.Message -notmatch '\\b40\[13\]\\b'\) \{ throw \}")
     Assert-Lune 'the stored session can be asked for on its own' `
         ($tokenPollerText -match '\[switch\]\$SkipEnvironment')
+    <#
+    Signing in is what someone does BECAUSE the panel is stuck, and stuck means it
+    has been refused enough to be waiting a minute between attempts. If the wait
+    survives the sign-in, /login looks like it did nothing.
+    #>
+    Assert-Lune 'a new sign-in discards the current backoff' `
+        ($tokenPollerText -match 'Credentials changed since the last poll')
+    Assert-Lune 'and discards the recorded auth verdict with it' `
+        ($tokenPollerText -match "authState = ''")
     # A gap in the context menu numbering silently truncates the menu.
     $ini = [System.IO.File]::ReadAllText((Join-Path $SkinRoot 'ClaudeLune.ini'))
     $menu = @([regex]::Matches($ini, '(?m)^ContextTitle(\d*)=') | ForEach-Object {
