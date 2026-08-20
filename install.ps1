@@ -157,7 +157,9 @@ try {
         $conf = Get-Content -LiteralPath $settings -Raw
         if ($conf -match '(?m)^PowerShellExe=powershell\.exe\s*\r?$') {
             $conf = $conf -replace '(?m)^PowerShellExe=powershell\.exe\s*\r?$', 'PowerShellExe=pwsh.exe'
-            Set-Content -LiteralPath $settings -Value $conf -NoNewline
+            # No BOM: Rainmeter treats a BOM'd .inc as having no sections at
+            # all, and the skin goes blank. Set-Content cannot write that.
+            [System.IO.File]::WriteAllText($settings, $conf, (New-Object System.Text.UTF8Encoding($false)))
             Write-Host '  PowerShell 7 detected and will be used'
         }
     }
@@ -167,7 +169,7 @@ try {
 
     Write-Host ''
     Write-Host 'Done. Right-click the panel for settings, layout, theme and opacity.' -ForegroundColor Cyan
-    Write-Host 'If it stays blank, run "claude" once in a terminal to sign in.'
+    Write-Host 'If it stays blank, run "claude auth login" to sign in.'
 } finally {
     if (Test-Path -LiteralPath $staging) {
         [System.IO.Directory]::Delete($staging, $true)
