@@ -11,18 +11,21 @@ on:
   pull_request:
   workflow_dispatch:
 
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     runs-on: windows-latest
+    timeout-minutes: 45
 
     steps:
       - uses: actions/checkout@v4
 
+      # -Full runs every group the plain invocation does, plus the exhaustive
+      # scale sweep. Running both was the same work twice.
       - name: Test suite
-        shell: powershell
-        run: .\tests\Invoke-LuneTests.ps1
-
-      - name: Test suite, exhaustive geometry sweep
         shell: powershell
         run: .\tests\Invoke-LuneTests.ps1 -Full
 
