@@ -107,7 +107,7 @@ $ProgressPreference    = 'SilentlyContinue'
 $LuneProduct = 'ClaudeLune'
 $LuneAuthor  = 'Lunez'
 $LuneHandle  = 'luneswan'
-$LuneVersion = '1.2.0'
+$LuneVersion = '1.2.1'
 $LuneStamp   = "; $LuneProduct $LuneVersion - $LuneAuthor ($LuneHandle). Generated file, edits are overwritten."
 
 # ------------------------------------------------------------------- paths ----
@@ -1037,7 +1037,9 @@ at all - the caller needs that last part to tell "Claude Code is signed out" fro
 answers.
 #>
 function Resolve-LuneToken {
-    param($Cache)
+    # SkipEnvironment asks for the stored session specifically, for the case where
+    # an environment variable answered first and the endpoint refused it.
+    param($Cache, [switch]$SkipEnvironment)
 
     <#
     An explicitly supplied token wins outright: it is the only source that cannot
@@ -1049,7 +1051,18 @@ function Resolve-LuneToken {
     anyway, because a future token that does carry the scope should be usable
     without a code change.
     #>
-    foreach ($name in 'CLAUDE_CODE_OAUTH_TOKEN', 'ANTHROPIC_AUTH_TOKEN') {
+    <#
+    Every token that could work, best-first, rather than the first one found.
+
+    An environment variable set by hand outranks the stored session, which is
+    right when it is the only credential and wrong when it is a `setup-token`:
+    that authenticates and is then refused by this endpoint, so preferring it
+    blindly hid a perfectly good signed-in session behind a 403. Measured on a
+    machine where the CLI worked and the panel did not.
+
+    The caller tries them in order and stops at the first that is not refused.
+    #>
+    foreach ($name in @(if ($SkipEnvironment) { @() } else { 'CLAUDE_CODE_OAUTH_TOKEN', 'ANTHROPIC_AUTH_TOKEN' })) {
         # Process scope first, then the user's own setting - a variable set with
         # setx after Rainmeter started is not in the environment this process
         # inherited, and asking the user to restart Rainmeter to pick it up is a
@@ -1385,10 +1398,46 @@ function Get-LuneUsageReport {
         return (Complete-LuneFetch -Payload $null -At $null -Stale $true)
     }
 
+    <#
+    A refused credential is not the end of the attempt: try the next one.
+
+    An environment variable outranks the stored session, which is right until the
+    variable holds a `claude setup-token` token. That authenticates and is then
+    refused here, because its scopes cover inference rather than this endpoint - so
+    the panel sat on 403 while a working signed-in session was on the same disk.
+    Only 401 and 403 fall through; a 429 or a timeout says nothing about the
+    credential and must not burn the next one.
+    #>
+    $attempts = @(@{ Token = $token; Source = $resolved.Source })
+    if ($resolved.Source -like 'env:*') {
+        $stored = Resolve-LuneToken -Cache $cached -SkipEnvironment
+        if ($stored.Token -and $stored.Token -ne $token) {
+            $attempts += @{ Token = $stored.Token; Source = $stored.Source }
+        }
+    }
+
     try {
-        $response = Invoke-RestMethod -Uri 'https://api.anthropic.com/api/oauth/usage' `
-            -Headers @{ Authorization = "Bearer $token"; 'anthropic-beta' = 'oauth-2025-04-20' } `
-            -TimeoutSec 15
+        $response = $null
+        $refusal  = $null
+        foreach ($attempt in $attempts) {
+            try {
+                $response = Invoke-RestMethod -Uri 'https://api.anthropic.com/api/oauth/usage' `
+                    -Headers @{ Authorization = "Bearer $($attempt.Token)"; 'anthropic-beta' = 'oauth-2025-04-20' } `
+                    -TimeoutSec 15
+                $token   = $attempt.Token
+                $refusal = $null
+                if ($attempt.Source -ne $resolved.Source) {
+                    Write-Verbose "$($resolved.Source) was refused; $($attempt.Source) worked."
+                    $resolved.Source = $attempt.Source
+                }
+                break
+            } catch {
+                $refusal = $_
+                if ($_.Exception.Message -notmatch '\b40[13]\b') { throw }
+                Write-Verbose "$($attempt.Source) refused: $($_.Exception.Message)"
+            }
+        }
+        if ($refusal) { throw $refusal }
 
         # Success: walk the interval back down towards the floor rather than
         # snapping to it, so a rate limit that is genuinely near 10s settles instead

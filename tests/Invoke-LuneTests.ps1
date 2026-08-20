@@ -849,6 +849,19 @@ AccountName=Someone Real
     Assert-Lune 'offline mode fills the session and weekly rows' `
         ($tokenPollerText -match "New-LuneLimitRow -Samples \`$samples -Field 'fh'" -and
          $tokenPollerText -match "New-LuneLimitRow -Samples \`$samples -Field 'sd'")
+    <#
+    A refused credential must not end the attempt. An environment variable
+    outranks the stored session, and when it holds a setup-token the endpoint
+    answers 403 - so the panel showed nothing while a working session sat on the
+    same disk. Only 401 and 403 fall through: a 429 says nothing about the
+    credential and must not burn the next one.
+    #>
+    Assert-Lune 'a refused credential falls through to the next' `
+        ($tokenPollerText -match '\$attempts \+= @\{ Token = \$stored\.Token')
+    Assert-Lune 'only 401 and 403 fall through' `
+        ($tokenPollerText -match "if \(\`$_\.Exception\.Message -notmatch '\\b40\[13\]\\b'\) \{ throw \}")
+    Assert-Lune 'the stored session can be asked for on its own' `
+        ($tokenPollerText -match '\[switch\]\$SkipEnvironment')
     # A gap in the context menu numbering silently truncates the menu.
     $ini = [System.IO.File]::ReadAllText((Join-Path $SkinRoot 'ClaudeLune.ini'))
     $menu = @([regex]::Matches($ini, '(?m)^ContextTitle(\d*)=') | ForEach-Object {

@@ -170,12 +170,21 @@ store, which no other program can read. Run `claude` once in a terminal and
 you have not: the footer reads `signed out` and the dot's tooltip tells you what
 to run.
 
-`CLAUDE_CODE_OAUTH_TOKEN` is honoured and checked first, but a token from
+`CLAUDE_CODE_OAUTH_TOKEN` is honoured and tried first, but a token from
 `claude setup-token` will not do: that one carries inference scope, and the usage
-endpoint answers 403 to it. Signing in is what produces a session with the scope
-this needs. There is no way to configure around it, which is the other reason the
-panel does not ask you to configure anything.
+endpoint answers 403 to it. If it is refused the panel falls through to the
+stored session rather than giving up.
 
+**A stale value in that variable is worth checking.** It overrides the signed-in
+session for Claude Code itself, not only for this panel, so a malformed one - a
+copied token with a leading space, say - makes `claude` fail to authenticate and
+leaves nothing on disk for the panel to read. Clear it and sign in again:
+
+```powershell
+setx CLAUDE_CODE_OAUTH_TOKEN ""
+```
+
+Then open a new terminal, run `claude`, and type `/login`.
 ## Troubleshooting
 
 | What you see | Why |
@@ -195,7 +204,7 @@ Every release publishes `SHA256SUMS.txt` next to the package. To check a copy
 somebody gave you:
 
 ```powershell
-Get-FileHash .\ClaudeLune_1.2.0.rmskin -Algorithm SHA256
+Get-FileHash .\ClaudeLune_1.2.1.rmskin -Algorithm SHA256
 ```
 
 If the hash is not the published one, it is not the file that was released.
