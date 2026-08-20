@@ -820,6 +820,35 @@ AccountName=Someone Real
     Assert-Lune 'the signed-out footer value is two words, not a sentence' `
         ($tokenPollerText -match "'signed out'" -and $tokenPollerText -notmatch "'signed out - run claude /login'")
 
+    # ==========================================================================
+    Start-Group 'Signing in is reachable from the panel'
+
+    <#
+    Signing in is the one thing the panel cannot do for itself, and on a machine
+    with no local history it is the only way to show anything at all. Leaving that
+    as prose in a README made it the user's problem to go and find.
+    #>
+    $iniText = [System.IO.File]::ReadAllText((Join-Path $SkinRoot 'ClaudeLune.ini'))
+    Assert-Lune 'the context menu offers signing in' ($iniText -match 'Sign in to Claude Code')
+    Assert-Lune 'the sign-in measure exists' ($iniText -match '(?m)^\[MeasureLuneLogin\]')
+    Assert-Lune 'the sign-in menu item is wired to it' ($iniText -match 'MeasureLuneLogin "Run"')
+    # /k, not /c: the window has to stay up for the browser round trip.
+    Assert-Lune 'the sign-in terminal is detached so it outlives the measure' ($iniText -match 'start "Claude Code')
+
+    # The history file is looked for, not assumed - this machine has no
+    # %APPDATA%\Claude at all.
+    Assert-Lune 'the usage history is searched for in more than one place' `
+        ($tokenPollerText -match 'function Get-LuneHistoryPath')
+    Assert-Lune 'the history search is what the reader uses' `
+        ($tokenPollerText -match 'Read-LuneJson \(Get-LuneHistoryPath\)')
+
+    # A replayed API response must not outrank a newer local reading.
+    Assert-Lune 'the fresher of the two sources wins' `
+        ($tokenPollerText -match 'Local history is newer than the replayed response')
+    # And the offline rows are actually built, rather than left at zero.
+    Assert-Lune 'offline mode fills the session and weekly rows' `
+        ($tokenPollerText -match "New-LuneLimitRow -Samples \`$samples -Field 'fh'" -and
+         $tokenPollerText -match "New-LuneLimitRow -Samples \`$samples -Field 'sd'")
     # A gap in the context menu numbering silently truncates the menu.
     $ini = [System.IO.File]::ReadAllText((Join-Path $SkinRoot 'ClaudeLune.ini'))
     $menu = @([regex]::Matches($ini, '(?m)^ContextTitle(\d*)=') | ForEach-Object {

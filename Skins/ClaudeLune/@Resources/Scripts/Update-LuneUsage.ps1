@@ -107,7 +107,7 @@ $ProgressPreference    = 'SilentlyContinue'
 $LuneProduct = 'ClaudeLune'
 $LuneAuthor  = 'Lunez'
 $LuneHandle  = 'luneswan'
-$LuneVersion = '1.1.3'
+$LuneVersion = '1.2.0'
 $LuneStamp   = "; $LuneProduct $LuneVersion - $LuneAuthor ($LuneHandle). Generated file, edits are overwritten."
 
 # ------------------------------------------------------------------- paths ----
@@ -1515,9 +1515,35 @@ function ConvertTo-LuneLimitRow {
 # SECTION 6  Desktop history - the standby source, and the trend
 # ==============================================================================
 
+<#
+Where the desktop app keeps its usage history, if it keeps one at all.
+
+$LuneHistoryPath is the documented location and stays the first candidate, but it
+is not the only one: this machine has %APPDATA%\Claude Code and
+%LOCALAPPDATA%\Claude and no %APPDATA%\Claude whatsoever. Same reasoning as the
+token search - the address is Anthropic's to change, so it is looked for rather
+than assumed.
+
+Returns the documented path when none exists, so the caller still names a
+sensible location.
+#>
+function Get-LuneHistoryPath {
+    $candidates = @(
+        $LuneHistoryPath
+        (Join-Path $env:APPDATA      'Claude Code\plan-usage-history.json')
+        (Join-Path $env:LOCALAPPDATA 'Claude\plan-usage-history.json')
+        (Join-Path $env:LOCALAPPDATA 'Claude-Data\plan-usage-history.json')
+        (Join-Path $env:USERPROFILE  '.claude\plan-usage-history.json')
+    )
+    foreach ($path in $candidates) {
+        if ($path -and (Test-Path -LiteralPath $path)) { return $path }
+    }
+    return $LuneHistoryPath
+}
+
 function Get-LuneHistorySamples {
     param([string]$Org)
-    $document = Read-LuneJson $LuneHistoryPath
+    $document = Read-LuneJson (Get-LuneHistoryPath)
     $samples  = Get-LuneProperty $document 'samples'
     if (-not $samples) { return @() }
 
@@ -1993,6 +2019,28 @@ try {
     The desktop cache is never substituted for these. It disagreed with the API by 20
     points and has no per-model limits.
     #>
+    <#
+    Whichever source actually has the newer reading wins.
+
+    A replayed API response used to beat the desktop app's local history no matter
+    how old it was, because the API is the better source when both are current.
+    That is not the same claim. Measured on a machine whose token had stopped
+    working: the panel replayed a six-DAY-old API response while a file on the same
+    disk held a reading from six hours earlier, and it kept doing that indefinitely
+    because nothing ever compared the two.
+
+    Only when the API reading is already flagged stale, so a live response is never
+    displaced by a local file that happens to have been written a second later.
+    #>
+    if ($api -and $script:LuneStale -and $samples.Count -gt 0 -and $script:LuneFetchedAt) {
+        $localAt = [DateTimeOffset]::FromUnixTimeMilliseconds([long]$samples[-1].t).UtcDateTime
+        if ($localAt -gt $script:LuneFetchedAt) {
+            Write-Verbose ("Local history is newer than the replayed response ({0:0}h); using it." -f
+                ($localAt - $script:LuneFetchedAt).TotalHours)
+            $api = $null
+        }
+    }
+
     if ($api) {
         # "live" only when this really is a fresh reading. A response replayed
         # because the endpoint threw 429 is reported as "cached" and dated by its
@@ -2008,6 +2056,23 @@ try {
         $source  = 'offline'
         $blank   = [PSCustomObject]@{ percent = 0; countdown = 'connecting'; date = ''; available = 0; label = '' }
         $session = $blank; $weekly = $blank; $scoped = $blank
+
+        <#
+        Built from the local history, which is the whole point of having it.
+
+        These two rows were left blank here while the file on disk held exactly the
+        numbers they wanted: fh IS the five-hour window and sd IS the seven-day one.
+        So the fallback did not fall back to anything - it drew 0% and "connecting"
+        for both, which is why the panel preferred a week-old API response to a
+        six-hour-old file and looked broken either way.
+
+        The reset times are estimated from an observed rollover rather than
+        reported, and New-LuneLimitRow labels them "est." to say so.
+        #>
+        if ($samples.Count -gt 0) {
+            $session = New-LuneLimitRow -Samples $samples -Field 'fh' -WindowHours 5
+            $weekly  = New-LuneLimitRow -Samples $samples -Field 'sd' -WindowHours 168
+        }
 
         # Cache mode: the local history has no per-model bucket, so the third row
         # only appears if the app ever starts recording one.

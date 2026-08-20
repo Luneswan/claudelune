@@ -39,8 +39,10 @@ A fresh install starts as mostly empty troughs and fills in from there.
 | [Rainmeter](https://www.rainmeter.net/) | 4.5 or newer |
 | [Claude Code](https://claude.com/claude-code) | installed and signed in |
 
-If you have never run it, type `claude` once in a terminal and sign in.
-ClaudeLune uses that session and nothing else, and finds it on its own.
+If you have never run it, right-click the panel and choose **Sign in to Claude
+Code…**. That opens a terminal in Claude Code; type `/login` and finish in the
+browser. ClaudeLune uses that session and nothing else, and finds it on its own
+from then on.
 
 The terminal part matters: signing in only through the Claude desktop app leaves
 nothing on disk for any other program to read.
@@ -193,7 +195,7 @@ Every release publishes `SHA256SUMS.txt` next to the package. To check a copy
 somebody gave you:
 
 ```powershell
-Get-FileHash .\ClaudeLune_1.1.3.rmskin -Algorithm SHA256
+Get-FileHash .\ClaudeLune_1.2.0.rmskin -Algorithm SHA256
 ```
 
 If the hash is not the published one, it is not the file that was released.
