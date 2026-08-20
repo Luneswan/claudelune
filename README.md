@@ -39,12 +39,12 @@ A fresh install starts as mostly empty troughs and fills in from there.
 | [Rainmeter](https://www.rainmeter.net/) | 4.5 or newer |
 | [Claude Code](https://claude.com/claude-code) | installed and signed in |
 
-If you have never run it, right-click the panel and choose **Sign in to Claude
-Code…**. That runs `claude auth login`, which opens the browser. ClaudeLune uses that session and nothing else, and finds it on its own
-from then on.
+Not signed in yet: right-click the panel, **Sign in to Claude Code…**. That runs
+`claude auth login` and opens the browser. From then on the panel finds the
+session on its own.
 
-The terminal part matters: signing in only through the Claude desktop app leaves
-nothing on disk for any other program to read.
+Do it in a terminal, not just the desktop app. The app keeps its session in its
+own encrypted store, and nothing else can read that.
 
 ## Install
 
@@ -86,15 +86,19 @@ Right-click and choose **Settings…**.
 | Rows | The brand mark, the per-model row, the included-model note |
 | Colours | Twelve palette overrides, with export and import |
 
-Width and height move independently, and so does every other axis. Each value is
-clamped on the way in, so no combination of them can overlap text or bend the
-panel out of shape. It has been tested through 320 configurations against 12
-layout invariants.
+Width and height move independently, and so does every other axis. Every value is
+clamped on the way in, and type is capped by the width it has to fit into, so no
+combination overlaps text or bends the panel out of shape.
 
-Picking a theme clears the twelve colour overrides back to that theme's palette.
-That is deliberate: it makes re-applying a theme an easier way back to a known
-state when you have customised yourself into a corner. It works the same way from
-the right-click menu and from the settings window.
+Checked two ways: 320 configurations against 12 layout invariants, and every
+drawn string rendered and measured against the space it has, across four
+layouts, several typefaces and the full scale range. The second check found 116
+collisions the first one could not see, because it never rendered anything.
+Anything still too long truncates rather than running over its neighbour.
+
+Picking a theme clears the twelve colour overrides back to that theme's palette,
+so re-applying a theme is the way back when you have customised yourself into a
+corner. Same from the right-click menu and from the settings window.
 
 **Export theme…** writes a `.lunetheme` file you can copy to another machine or
 hand to someone else. It is the same plain `Key=Value` text as the settings file,
@@ -157,26 +161,26 @@ credential store, then a sweep of Claude Code's directories for anything holding
 one. A token is recognised by looking like an Anthropic token, not by the field
 name around it, so a renamed key or a new directory still resolves.
 
-That is deliberate. An earlier version knew one path, Claude Code stopped writing
-there, and the panel sat on a two-week-old reading without ever saying why.
+An earlier version knew one path. Claude Code stopped writing there and the panel
+sat on a two-week-old reading without saying why.
 
 It reads; it never writes to a file Claude Code owns.
 
-**It can only find credentials that exist.** Signing in through the Claude
-desktop app alone is not enough — that session lives in the app's own encrypted
-store, which no other program can read. Run `claude auth login` once, and everything after that is automatic. The panel says so plainly if
-you have not: the footer reads `signed out` and the dot's tooltip tells you what
-to run.
+**It can only find credentials that exist.** The desktop app alone is not enough;
+its session lives in an encrypted store nothing else can read. Run
+`claude auth login` once and the rest is automatic. Until you do, the footer says
+`signed out` and the dot's tooltip says what to run.
 
 `CLAUDE_CODE_OAUTH_TOKEN` is honoured and tried first, but a token from
 `claude setup-token` will not do: that one carries inference scope, and the usage
 endpoint answers 403 to it. If it is refused the panel falls through to the
 stored session rather than giving up.
 
-**A stale value in that variable is worth checking.** It overrides the signed-in
-session for Claude Code itself, not only for this panel, so a malformed one - a
-copied token with a leading space, say - makes `claude` fail to authenticate and
-leaves nothing on disk for the panel to read. Clear it and sign in again:
+**Check that variable if the panel is stuck.** It overrides the signed-in session
+for Claude Code itself, not just this panel. A token copied with a leading space
+sends `Bearer ` with two spaces, every call comes back `401 Invalid bearer
+token`, and signing in looks like it does nothing because the variable keeps
+winning. Clear it, then sign in:
 
 ```powershell
 setx CLAUDE_CODE_OAUTH_TOKEN ""
@@ -189,8 +193,10 @@ Then run `claude auth login`.
 |---|---|
 | Blank panel on first load | No poll has finished yet. Give it ten seconds. |
 | Amber dot, "stale" in the tooltip | Not a fault. Claude Code has not been reachable, so the panel is showing its last reading. See below. |
-| Tooltip says Claude Code is signed out | Run `claude /login` in a terminal. The panel picks the token up on its next poll. |
-| Nothing ever loads | Run `claude` once in a terminal to sign in. |
+| Tooltip says Claude Code is signed out | Run `claude auth login`. The panel picks it up within about ten seconds. |
+| Signing in seems to do nothing | Check `CLAUDE_CODE_OAUTH_TOKEN`. If it is set, it overrides the session you just created. |
+| Nothing ever loads | `claude auth status` will say whether you are signed in. |
+| Text truncated with an ellipsis | The panel is too narrow for the type size. Raise WidthScale or lower FontScale. |
 | Rows for a model you do not have | Right-click to hide them, or use Settings → Rows. |
 | A setting looks wrong after you edited the file | Values are clamped to a usable range. The settings window shows what was actually produced. |
 
@@ -202,7 +208,7 @@ Every release publishes `SHA256SUMS.txt` next to the package. To check a copy
 somebody gave you:
 
 ```powershell
-Get-FileHash .\ClaudeLune_1.2.3.rmskin -Algorithm SHA256
+Get-FileHash .\ClaudeLune_1.3.0.rmskin -Algorithm SHA256
 ```
 
 If the hash is not the published one, it is not the file that was released.

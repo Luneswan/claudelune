@@ -756,8 +756,18 @@ AccountName=Someone Real
         New-Item -ItemType Directory -Force -Path $planted | Out-Null
         '{"session":{"access_token":"sk-ant-oat01-FFFFFFFFFFFFFFFFFFFF"}}' |
             Set-Content -LiteralPath $plantedFile -Encoding ASCII
-        Assert-Lune 'a relocated token file is found by sweeping' `
-            ((Find-LuneTokenFile) -eq $plantedFile)
+        <#
+        The sweep returns the first root that answers, and the roots are ordered.
+        Asserting it returns THIS file assumed no other root held a token, which
+        stopped being true the moment the machine running the tests had a real
+        signed-in session. What matters is that a sweep finds a readable token,
+        and that a directory Claude Code does not use today is reachable at all.
+        #>
+        $swept = Find-LuneTokenFile
+        Assert-Lune 'a sweep finds a readable token file' `
+            ($swept -and (Read-LuneTokenDocument (Read-LuneJson $swept))) "got '$swept'"
+        Assert-Lune 'a relocated directory is inside the search' `
+            ((Get-LuneTokenRoots) -contains $planted)
     } finally {
         Remove-Item -LiteralPath $plantedFile -Force -ErrorAction SilentlyContinue
         if (-not $existed) { Remove-Item -LiteralPath $planted -Recurse -Force -ErrorAction SilentlyContinue }
@@ -873,6 +883,144 @@ AccountName=Someone Real
         ($tokenPollerText -match 'Credentials changed since the last poll')
     Assert-Lune 'and discards the recorded auth verdict with it' `
         ($tokenPollerText -match "authState = ''")
+    # ==========================================================================
+    Start-Group 'Drawn text fits the space it has'
+
+    <#
+    The geometry sweep checks resolved numbers and never renders anything, so a
+    label 40px too wide for its row passed all 320 of its configurations. This
+    measures the actual strings with the actual font metrics.
+
+    It found 116 collisions across 14 meters on the first run - worst 396px -
+    because FontScale and WidthScale move independently and 2.0 type in a 0.5
+    panel cannot fit by construction. Fixed by capping type against the width it
+    has, and by bounding every drawn string so it truncates rather than overlaps.
+    #>
+    Add-Type -AssemblyName System.Drawing
+    $fitBmp = New-Object System.Drawing.Bitmap 1, 1
+    $fitGfx = [System.Drawing.Graphics]::FromImage($fitBmp)
+
+    # Worst-case-but-real values for everything the poller publishes.
+    $fitValues = @{
+        FiveHourShown = '100'; SevenDayShown = '100'; ScopedShown = '100'
+        UsageWord = 'used'; ThirdLabel = 'Claude Sonnet 4.5'
+        FiveHourCountdown = '4h 36m'; SevenDayCountdown = '6d 14h'; ScopedCountdown = '6d 14h'
+        AccountPlan = 'Max 20x'; AccountName = 'a.very.long.account.name'
+        TokensToday = '1.23M'; LastUpdated = '11:59pm (7d 17h ago)'
+        ScopedValue = '100% used'; ExtraModel = 'Claude Sonnet 4.5'; SparkRange = '100% in 24h'
+    }
+
+    $fitRes = New-LuneSandbox; $sandboxes += (Split-Path $fitRes -Parent)
+    $fitFonts  = if ($Full) { @('Segoe UI', 'Consolas', 'Comic Sans MS') } else { @('Segoe UI', 'Consolas') }
+    $fitScales = if ($Full) { @('0.5', '1.0', '1.5', '2.0') } else { @('1.0', '2.0') }
+
+    $fitProblems = @()
+    $fitChecked  = 0
+
+    foreach ($fitSize in @('Small', 'Normal', 'Wide', 'Large')) {
+        $fitLayout = [System.IO.File]::ReadAllText((Join-Path $fitRes ('Layouts\Lune' + $fitSize + '.inc')))
+        $fitMeters = @()
+        foreach ($blk in [regex]::Split($fitLayout, '(?m)^(?=\[)')) {
+            if ($blk -notmatch '(?m)^Meter=String') { continue }
+            $nm = ([regex]::Match($blk, '^\[(\w+)\]')).Groups[1].Value
+            if (-not $nm) { continue }
+            $fitMeters += [PSCustomObject]@{
+                Name = $nm
+                Text = ([regex]::Match($blk, '(?m)^Text=(.*)$')).Groups[1].Value
+                Size = ([regex]::Match($blk, '(?m)^FontSize=#(\w+)#')).Groups[1].Value
+                Bold = ($blk -match '(?m)^FontWeight=[6-9]')
+                Bound = ([regex]::Match($blk, '(?m)^W=(.*)$')).Groups[1].Value
+                Clip  = ($blk -match '(?m)^ClipString=1')
+            }
+        }
+
+        foreach ($fitFont in $fitFonts) {
+            foreach ($fitScale in $fitScales) {
+                $geo = Get-LuneGeometry -Res $fitRes -Size $fitSize -Settings @{
+                    FontScale = $fitScale; WidthScale = '0.5'; FontFace = $fitFont
+                }
+                foreach ($m in $fitMeters) {
+                    if (-not $m.Text -or -not $m.Size -or -not $geo.ContainsKey($m.Size)) { continue }
+
+                    <#
+                    A bound is only a fix if it is smaller than the row. Skipping
+                    bounded meters entirely made this check measure nothing at all
+                    once everything had been bounded - 233 tests passing on "0
+                    measured". So the bound is evaluated and judged too.
+                    #>
+                    $bound = $null
+                    if ($m.Bound -and $m.Clip) {
+                        $expr = $m.Bound -replace '#BarW#', ([int]$geo.BarW) -replace '#W#', ([int]$geo.W)
+                        try { $bound = [int][double](Invoke-Expression $expr) } catch { $bound = $null }
+                        if ($null -eq $bound -or $bound -gt [int]$geo.BarW) {
+                            $fitProblems += ('{0}/{1} bound {2} exceeds row {3}' -f $fitSize, $m.Name, $bound, [int]$geo.BarW)
+                        }
+                    }
+
+                    $txt = $m.Text
+                    foreach ($k in $fitValues.Keys) { $txt = $txt -replace ('#' + $k + '#'), $fitValues[$k] }
+                    $txt = $txt -replace '#\w+#', ''
+                    if (-not $txt) { continue }
+
+                    $style = if ($m.Bold) { [System.Drawing.FontStyle]::Bold } else { [System.Drawing.FontStyle]::Regular }
+                    $font = $null
+                    try { $font = New-Object System.Drawing.Font($fitFont, [float]$geo[$m.Size], $style) }
+                    catch { $font = New-Object System.Drawing.Font('Segoe UI', [float]$geo[$m.Size], $style) }
+                    $w = [int][Math]::Ceiling($fitGfx.MeasureString($txt, $font).Width)
+                    $font.Dispose()
+                    $fitChecked++
+
+                    # What actually lands on the panel: clipped at its bound, or
+                    # its full width when nothing bounds it.
+                    $drawn = if ($null -ne $bound) { [Math]::Min($w, $bound) } else { $w }
+                    if ($drawn -gt [int]$geo.BarW) {
+                        $fitProblems += ('{0}/{1} {2} fs={3} {4}px over {5}' -f
+                            $fitSize, $m.Name, $fitFont, $fitScale, ($drawn - [int]$geo.BarW), [int]$geo.BarW)
+                    }
+                }
+            }
+        }
+    }
+    $fitGfx.Dispose(); $fitBmp.Dispose()
+
+    <#
+    A label and the value beside it share one row. Each can fit on its own and
+    still collide, which is what 59 of the original 116 findings were.
+    #>
+    foreach ($fitSize in @('Small', 'Normal', 'Wide', 'Large')) {
+        $lay = [System.IO.File]::ReadAllText((Join-Path $fitRes ('Layouts\Lune' + $fitSize + '.inc')))
+        $geo = Get-LuneGeometry -Res $fitRes -Size $fitSize -Settings @{
+            FontScale = '2.0'; WidthScale = '0.5'; FontFace = 'Consolas'
+        }
+        foreach ($pair in @(@('SessionLabel','SessionValue'), @('WeeklyLabel','WeeklyValue'), @('ScopedLabel','ScopedValue'))) {
+            $sum = 0; $seen = 0
+            foreach ($nm in $pair) {
+                $blk = [regex]::Match($lay, '(?s)\[' + $nm + '\].*?(?=\r?\n\[)').Value
+                if (-not $blk) { continue }
+                $bw = ([regex]::Match($blk, '(?m)^W=(.*)$')).Groups[1].Value
+                if (-not $bw) { continue }
+                $seen++
+                $expr = $bw -replace '#BarW#', ([int]$geo.BarW) -replace '#W#', ([int]$geo.W)
+                try { $sum += [int][double](Invoke-Expression $expr) } catch { }
+            }
+            if ($seen -eq 2) {
+                $fitChecked++
+                if ($sum -gt [int]$geo.BarW) {
+                    $fitProblems += ('{0}/{1}+{2} bounds total {3} over row {4}' -f $fitSize, $pair[0], $pair[1], $sum, [int]$geo.BarW)
+                }
+            }
+        }
+    }
+
+    # A check that measures nothing passes for the wrong reason. This one did
+    # exactly that once every meter had been bounded: 0 measured, green.
+    Assert-Lune 'the text check actually measured something' ($fitChecked -gt 100) "measured $fitChecked"
+    Assert-Lune "no drawn string overflows its row ($fitChecked measured)" `
+        ($fitProblems.Count -eq 0) (($fitProblems | Select-Object -First 4) -join ' | ')
+
+    # Type is capped against the width it has, not only its own range.
+    Assert-Lune 'type is capped by the width available to it' `
+        ($tokenPollerText -match '\$labelBudget = switch')
     # A gap in the context menu numbering silently truncates the menu.
     $ini = [System.IO.File]::ReadAllText((Join-Path $SkinRoot 'ClaudeLune.ini'))
     $menu = @([regex]::Matches($ini, '(?m)^ContextTitle(\d*)=') | ForEach-Object {

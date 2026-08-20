@@ -82,6 +82,10 @@ FontFace=#FontFace#
 FontSize=#SmallFS#
 FontColor=#Dim#
 Text=Spend rate
+; Bounded so it truncates instead of running into the value.
+W=(#BarW# * 0.6)
+H=(#SmallFS# * 2)
+ClipString=1
 AntiAlias=1
 DynamicVariables=1
 
@@ -95,11 +99,19 @@ FontWeight=600
 FontColor=#Accent#
 StringAlign=Right
 Text=#SparkRange#
+; Bounded so it truncates instead of running into the caption.
+W=(#BarW# * 0.4)
+H=(#SmallFS# * 2)
+ClipString=1
 AntiAlias=1
 DynamicVariables=1
 Group=Live
 ToolTipTitle=Spend rate
-ToolTipText=#SparkRange#, peak #TrendPeak#%/h#CRLF##TrendCovered# of #TrendCols# hours recorded
+ToolTipText=#SparkRange#
+; Bounded so it truncates instead of running into the caption.
+W=(#BarW# * 0.4)
+H=(#SmallFS# * 2)
+ClipString=1, peak #TrendPeak#%/h#CRLF##TrendCovered# of #TrendCols# hours recorded
 
 "@
 

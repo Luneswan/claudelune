@@ -61,6 +61,10 @@ FontSize=#TitleFS#
 FontWeight=600
 FontColor=#Bright#
 Text=Claude
+; Bounded so it truncates instead of running into its neighbour.
+W=(#BarW# * 0.6)
+H=(#TitleFS# * 2)
+ClipString=1
 AntiAlias=1
 DynamicVariables=1
 LeftMouseUpAction=["#UsageUrl#"]
@@ -105,6 +109,10 @@ FontFace=#FontFace#
 FontSize=#LabelFS#
 FontColor=#Text#
 Text=5-hour limit
+; Bounded so it truncates instead of running into its neighbour.
+W=(#BarW# * 0.62)
+H=(#LabelFS# * 2)
+ClipString=1
 AntiAlias=1
 DynamicVariables=1
 
@@ -118,6 +126,10 @@ FontWeight=600
 FontColor=#Text#
 StringAlign=Right
 Text=#FiveHourShown#% #UsageWord#
+; Bounded so it truncates instead of running into its neighbour.
+W=(#BarW# * 0.38)
+H=(#LabelFS# * 2)
+ClipString=1
 AntiAlias=1
 DynamicVariables=1
 Group=Live
@@ -139,6 +151,10 @@ FontFace=#FontFace#
 FontSize=#SmallFS#
 FontColor=#Dim#
 Text=resets #FiveHourCountdown#
+; Bounded so it truncates instead of running into its neighbour.
+W=#BarW#
+H=(#SmallFS# * 2)
+ClipString=1
 AntiAlias=1
 DynamicVariables=1
 Group=Live
@@ -152,6 +168,10 @@ FontFace=#FontFace#
 FontSize=#LabelFS#
 FontColor=#Text#
 Text=Weekly - all models
+; Bounded so it truncates instead of running into its neighbour.
+W=(#BarW# * 0.62)
+H=(#LabelFS# * 2)
+ClipString=1
 AntiAlias=1
 DynamicVariables=1
 
@@ -165,6 +185,10 @@ FontWeight=600
 FontColor=#Text#
 StringAlign=Right
 Text=#SevenDayShown#% #UsageWord#
+; Bounded so it truncates instead of running into its neighbour.
+W=(#BarW# * 0.38)
+H=(#LabelFS# * 2)
+ClipString=1
 AntiAlias=1
 DynamicVariables=1
 Group=Live
@@ -186,6 +210,10 @@ FontFace=#FontFace#
 FontSize=#SmallFS#
 FontColor=#Dim#
 Text=resets #SevenDayCountdown#
+; Bounded so it truncates instead of running into its neighbour.
+W=#BarW#
+H=(#SmallFS# * 2)
+ClipString=1
 AntiAlias=1
 DynamicVariables=1
 Group=Live
@@ -218,6 +246,10 @@ FontWeight=600
 FontColor=#Dim#
 StringAlign=Right
 Text=#ScopedValue#
+; Bounded so it truncates instead of running into its neighbour.
+W=(#BarW# * 0.38)
+H=(#LabelFS# * 2)
+ClipString=1
 AntiAlias=1
 DynamicVariables=1
 Hidden=(1 - #ScopedOn#)
@@ -243,6 +275,10 @@ FontFace=#FontFace#
 FontSize=#SmallFS#
 FontColor=#Dim#
 Text=resets #ScopedCountdown#
+; Bounded so it truncates instead of running into its neighbour.
+W=#BarW#
+H=(#SmallFS# * 2)
+ClipString=1
 AntiAlias=1
 DynamicVariables=1
 Hidden=(1 - #ScopedOn#)

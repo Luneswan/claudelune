@@ -107,7 +107,7 @@ $ProgressPreference    = 'SilentlyContinue'
 $LuneProduct = 'ClaudeLune'
 $LuneAuthor  = 'Lunez'
 $LuneHandle  = 'luneswan'
-$LuneVersion = '1.2.3'
+$LuneVersion = '1.3.0'
 $LuneStamp   = "; $LuneProduct $LuneVersion - $LuneAuthor ($LuneHandle). Generated file, edits are overwritten."
 
 # ------------------------------------------------------------------- paths ----
@@ -529,6 +529,31 @@ function Write-LuneResolvedLayout {
     $titleFS = Get-LuneClamped ([int]$presets["${size}Title"]  * $kAll * $kFont) 7 34
     $labelFS = Get-LuneClamped ([int]$presets["${size}Label"]  * $kAll * $kFont) 6 30
     $smallFS = Get-LuneClamped ([int]$presets["${size}Small"]  * $kAll * $kFont) 6 26
+
+    <#
+    Type is also capped by the width it has to fit into, not only by its own range.
+
+    FontScale and WidthScale move independently, so 2.0 type in a 0.5 panel was a
+    supported combination that could not possibly fit: measured, the weekly row
+    ran 396px past a 304px card. The absolute clamps never saw it, because
+    individually both values were legal.
+
+    The budgets are the character counts each layout's widest row actually draws -
+    "Weekly - all models" beside "100% used" is 28 - and 0.75 is a per-character
+    advance wide enough to cover the fonts people pick, monospace included. At
+    default scales these caps sit above what the presets ask for and change
+    nothing; they only bite when a combination would otherwise overflow.
+
+    Clipping still backs this up. This keeps the panel legible; clipping keeps it
+    correct.
+    #>
+    $labelBudget = switch ($size) { 'Small' { 18 } 'Wide' { 16 } default { 28 } }
+    $smallBudget = switch ($size) { 'Small' { 20 } 'Wide' { 18 } default { 26 } }
+    $titleBudget = 14
+
+    $labelFS = [Math]::Min($labelFS, [Math]::Max(6, [int]($barWidth / ($labelBudget * 0.75))))
+    $smallFS = [Math]::Min($smallFS, [Math]::Max(6, [int]($barWidth / ($smallBudget * 0.75))))
+    $titleFS = [Math]::Min($titleFS, [Math]::Max(7, [int]($barWidth / ($titleBudget * 0.75))))
     $logoPx  = Get-LuneClamped ([int]$presets["${size}LogoPx"] * $kAll * $kIcon) 1  8
 
     # The row pitch follows the chosen typeface, not an assumption about it.
@@ -1063,13 +1088,28 @@ function Resolve-LuneToken {
     The caller tries them in order and stops at the first that is not refused.
     #>
     foreach ($name in @(if ($SkipEnvironment) { @() } else { 'CLAUDE_CODE_OAUTH_TOKEN', 'ANTHROPIC_AUTH_TOKEN' })) {
-        # Process scope first, then the user's own setting - a variable set with
-        # setx after Rainmeter started is not in the environment this process
-        # inherited, and asking the user to restart Rainmeter to pick it up is a
-        # worse answer than reading it.
-        $value = [Environment]::GetEnvironmentVariable($name)
+        <#
+        The user's own setting outranks what this process inherited.
+
+        Rainmeter starts once and keeps its environment for days. Clearing the
+        variable therefore does not reach it: the process still holds the value it
+        inherited, and preferring that shadowed a session the user had just signed
+        into - the file on disk was current and the panel was quoting a variable
+        that no longer existed. Measured directly after a successful login.
+
+        A process-scope value is only trusted when the user has not set one and
+        there is no stored session, which is the case it exists for: launching
+        Rainmeter from a script that sets it deliberately.
+        #>
+        $value = $null
+        try { $value = [Environment]::GetEnvironmentVariable($name, 'User') } catch { }
         if (-not (Get-LuneCleanToken $value)) {
-            try { $value = [Environment]::GetEnvironmentVariable($name, 'User') } catch { }
+            $inherited = [Environment]::GetEnvironmentVariable($name)
+            if ((Get-LuneCleanToken $inherited) -and -not (Get-LuneTokenFiles)) {
+                $value = $inherited
+            } else {
+                $value = $null
+            }
         }
         $clean = Get-LuneCleanToken $value
         if ($clean) {

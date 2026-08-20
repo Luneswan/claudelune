@@ -52,6 +52,10 @@ FontSize=#LabelFS#
 FontWeight=600
 FontColor=#Bright#
 Text=Claude
+; Bounded so it truncates instead of running into its neighbour.
+W=(#BarW# * 0.6)
+H=(#TitleFS# * 2)
+ClipString=1
 AntiAlias=1
 DynamicVariables=1
 LeftMouseUpAction=["#UsageUrl#"]
@@ -85,6 +89,10 @@ FontSize=#SmallFS#
 FontColor=#Dim#
 StringAlign=Right
 Text=#TokensToday# today
+; Bounded so it truncates instead of running into its neighbour.
+W=(#BarW# * 0.5)
+H=(#SmallFS# * 2)
+ClipString=1
 AntiAlias=1
 DynamicVariables=1
 Group=Live
@@ -108,6 +116,10 @@ FontFace=#FontFace#
 FontSize=#SmallFS#
 FontColor=#Dim#
 Text=5-hour
+; Bounded so it truncates instead of running into its neighbour.
+W=(#BarW# * 0.62)
+H=(#LabelFS# * 2)
+ClipString=1
 AntiAlias=1
 DynamicVariables=1
 
@@ -121,6 +133,10 @@ FontSize=#SmallFS#
 FontWeight=600
 FontColor=#Text#
 Text=#FiveHourShown#%
+; Bounded so it truncates instead of running into its neighbour.
+W=(#BarW# * 0.38)
+H=(#LabelFS# * 2)
+ClipString=1
 AntiAlias=1
 DynamicVariables=1
 Group=Live
@@ -144,6 +160,10 @@ FontFace=#FontFace#
 FontSize=#SmallFS#
 FontColor=#Dim#
 Text=Weekly
+; Bounded so it truncates instead of running into its neighbour.
+W=(#BarW# * 0.62)
+H=(#LabelFS# * 2)
+ClipString=1
 AntiAlias=1
 DynamicVariables=1
 
@@ -157,6 +177,10 @@ FontSize=#SmallFS#
 FontWeight=600
 FontColor=#Text#
 Text=#SevenDayShown#%
+; Bounded so it truncates instead of running into its neighbour.
+W=(#BarW# * 0.38)
+H=(#LabelFS# * 2)
+ClipString=1
 AntiAlias=1
 DynamicVariables=1
 Group=Live
@@ -200,6 +224,10 @@ FontSize=#SmallFS#
 FontWeight=600
 FontColor=#Text#
 Text=#ScopedShown#%
+; Bounded so it truncates instead of running into its neighbour.
+W=(#BarW# * 0.38)
+H=(#LabelFS# * 2)
+ClipString=1
 AntiAlias=1
 DynamicVariables=1
 Hidden=(1 - #ScopedOn#)
