@@ -1,13 +1,20 @@
 # ClaudeLune
 
 [![tests](https://github.com/Luneswan/claudelune/actions/workflows/tests.yml/badge.svg)](https://github.com/Luneswan/claudelune/actions/workflows/tests.yml)
+[![release](https://img.shields.io/github/v/release/Luneswan/claudelune?color=%23d97757)](https://github.com/Luneswan/claudelune/releases/latest)
+[![downloads](https://img.shields.io/github/downloads/Luneswan/claudelune/total?color=%23d97757)](https://github.com/Luneswan/claudelune/releases)
+[![licence](https://img.shields.io/github/license/Luneswan/claudelune?color=%23d97757)](LICENSE)
 
-A Rainmeter panel that keeps your Claude Code usage limits on the desktop. The
-5-hour session window, the weekly allowance, and whatever per-model limit your
-plan carries, all visible without opening a browser or typing anything.
+**A Rainmeter skin for Windows that shows your Claude Code usage limits on the
+desktop.** The 5-hour session window, the weekly allowance, and whatever
+per-model limit your plan carries — visible without opening a browser or typing
+anything.
 
-It reads the credentials Claude Code already stores on your machine. There is no
-API key to paste and nothing to sign into a second time.
+No API key. It reads the session Claude Code already has on your machine, and
+talks to one endpoint: the same usage API the Claude apps use.
+
+Four layouts, seven themes, and a settings window that can change every
+measurement of the panel.
 
 | Small | Normal | Large |
 |:--:|:--:|:--:|
