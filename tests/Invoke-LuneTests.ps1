@@ -950,7 +950,12 @@ AccountName=Someone Real
                     #>
                     $bound = $null
                     if ($m.Bound -and $m.Clip) {
-                        $expr = $m.Bound -replace '#BarW#', ([int]$geo.BarW) -replace '#W#', ([int]$geo.W)
+                        # Substitute every resolved value, not just BarW/W - the
+                        # bounds are named variables now, not fractions.
+                        $expr = $m.Bound
+                        foreach ($gk in ($geo.Keys | Sort-Object Length -Descending)) {
+                            $expr = $expr -replace ('#' + $gk + '#'), ([int]$geo[$gk])
+                        }
                         try { $bound = [int][double](Invoke-Expression $expr) } catch { $bound = $null }
                         if ($null -eq $bound -or $bound -gt [int]$geo.BarW) {
                             $fitProblems += ('{0}/{1} bound {2} exceeds row {3}' -f $fitSize, $m.Name, $bound, [int]$geo.BarW)
@@ -1000,7 +1005,10 @@ AccountName=Someone Real
                 $bw = ([regex]::Match($blk, '(?m)^W=(.*)$')).Groups[1].Value
                 if (-not $bw) { continue }
                 $seen++
-                $expr = $bw -replace '#BarW#', ([int]$geo.BarW) -replace '#W#', ([int]$geo.W)
+                $expr = $bw
+                foreach ($gk in ($geo.Keys | Sort-Object Length -Descending)) {
+                    $expr = $expr -replace ('#' + $gk + '#'), ([int]$geo[$gk])
+                }
                 try { $sum += [int][double](Invoke-Expression $expr) } catch { }
             }
             if ($seen -eq 2) {

@@ -55,7 +55,7 @@ FontColor=#Accent#
 Text=#AccountPlan#
 ; Bounded: an unbounded String meter grows past the card, and every value
 ; here is arbitrary length. ClipString=1 needs both W and H.
-W=(#BarW# * 0.6)
+W=#HeadPlanW#
 H=(#SmallFS# * 2)
 ClipString=1
 AntiAlias=1
@@ -85,7 +85,7 @@ FontSize=#SmallFS#
 FontColor=#Dim#
 Text=5-hour
 ; Bounded so it truncates instead of running into its neighbour.
-W=(#BarW# * 0.62)
+W=#RowLabelW#
 H=(#LabelFS# * 2)
 ClipString=1
 AntiAlias=1
@@ -102,7 +102,7 @@ FontColor=#Text#
 StringAlign=Right
 Text=#FiveHourShown#%
 ; Bounded so it truncates instead of running into its neighbour.
-W=(#BarW# * 0.38)
+W=#RowValueW#
 H=(#LabelFS# * 2)
 ClipString=1
 AntiAlias=1
@@ -129,7 +129,7 @@ FontSize=#SmallFS#
 FontColor=#Dim#
 Text=Weekly
 ; Bounded so it truncates instead of running into its neighbour.
-W=(#BarW# * 0.62)
+W=#RowLabelW#
 H=(#LabelFS# * 2)
 ClipString=1
 AntiAlias=1
@@ -146,7 +146,7 @@ FontColor=#Text#
 StringAlign=Right
 Text=#SevenDayShown#%
 ; Bounded so it truncates instead of running into its neighbour.
-W=(#BarW# * 0.38)
+W=#RowValueW#
 H=(#LabelFS# * 2)
 ClipString=1
 AntiAlias=1
@@ -174,7 +174,7 @@ FontColor=#Dim#
 Text=#ThirdLabel#
 ; Bounded: an unbounded String meter grows past the card, and every value
 ; here is arbitrary length. ClipString=1 needs both W and H.
-W=(#BarW# * 0.62)
+W=#RowLabelW#
 H=(#LabelFS# * 2)
 ClipString=1
 AntiAlias=1
@@ -193,7 +193,7 @@ FontColor=#Text#
 StringAlign=Right
 Text=#ScopedShown#%
 ; Bounded so it truncates instead of running into its neighbour.
-W=(#BarW# * 0.38)
+W=#RowValueW#
 H=(#LabelFS# * 2)
 ClipString=1
 AntiAlias=1

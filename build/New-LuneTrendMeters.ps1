@@ -107,11 +107,7 @@ AntiAlias=1
 DynamicVariables=1
 Group=Live
 ToolTipTitle=Spend rate
-ToolTipText=#SparkRange#
-; Bounded so it truncates instead of running into the caption.
-W=(#BarW# * 0.4)
-H=(#SmallFS# * 2)
-ClipString=1, peak #TrendPeak#%/h#CRLF##TrendCovered# of #TrendCols# hours recorded
+ToolTipText=#SparkRange#, peak #TrendPeak#%/h#CRLF##TrendCovered# of #TrendCols# hours recorded
 
 "@
 

@@ -52,10 +52,6 @@ FontSize=#LabelFS#
 FontWeight=600
 FontColor=#Bright#
 Text=Claude
-; Bounded so it truncates instead of running into its neighbour.
-W=(#BarW# * 0.6)
-H=(#TitleFS# * 2)
-ClipString=1
 AntiAlias=1
 DynamicVariables=1
 LeftMouseUpAction=["#UsageUrl#"]
@@ -71,7 +67,7 @@ FontColor=#Accent#
 Text=#AccountPlan#
 ; Bounded: an unbounded String meter grows past the card, and every value
 ; here is arbitrary length. ClipString=1 needs both W and H.
-W=(#BarW# * 0.4)
+W=#HeadPlanW#
 H=(#SmallFS# * 2)
 ClipString=1
 AntiAlias=1
@@ -117,7 +113,7 @@ FontSize=#SmallFS#
 FontColor=#Dim#
 Text=5-hour
 ; Bounded so it truncates instead of running into its neighbour.
-W=(#BarW# * 0.62)
+W=#RowLabelW#
 H=(#LabelFS# * 2)
 ClipString=1
 AntiAlias=1
@@ -134,7 +130,7 @@ FontWeight=600
 FontColor=#Text#
 Text=#FiveHourShown#%
 ; Bounded so it truncates instead of running into its neighbour.
-W=(#BarW# * 0.38)
+W=#RowValueW#
 H=(#LabelFS# * 2)
 ClipString=1
 AntiAlias=1
@@ -161,7 +157,7 @@ FontSize=#SmallFS#
 FontColor=#Dim#
 Text=Weekly
 ; Bounded so it truncates instead of running into its neighbour.
-W=(#BarW# * 0.62)
+W=#RowLabelW#
 H=(#LabelFS# * 2)
 ClipString=1
 AntiAlias=1
@@ -178,7 +174,7 @@ FontWeight=600
 FontColor=#Text#
 Text=#SevenDayShown#%
 ; Bounded so it truncates instead of running into its neighbour.
-W=(#BarW# * 0.38)
+W=#RowValueW#
 H=(#LabelFS# * 2)
 ClipString=1
 AntiAlias=1
@@ -225,7 +221,7 @@ FontWeight=600
 FontColor=#Text#
 Text=#ScopedShown#%
 ; Bounded so it truncates instead of running into its neighbour.
-W=(#BarW# * 0.38)
+W=#RowValueW#
 H=(#LabelFS# * 2)
 ClipString=1
 AntiAlias=1

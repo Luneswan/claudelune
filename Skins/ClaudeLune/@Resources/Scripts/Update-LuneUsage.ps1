@@ -107,7 +107,7 @@ $ProgressPreference    = 'SilentlyContinue'
 $LuneProduct = 'ClaudeLune'
 $LuneAuthor  = 'Lunez'
 $LuneHandle  = 'luneswan'
-$LuneVersion = '1.3.0'
+$LuneVersion = '1.3.1'
 $LuneStamp   = "; $LuneProduct $LuneVersion - $LuneAuthor ($LuneHandle). Generated file, edits are overwritten."
 
 # ------------------------------------------------------------------- paths ----
@@ -556,6 +556,26 @@ function Write-LuneResolvedLayout {
     $titleFS = [Math]::Min($titleFS, [Math]::Max(7, [int]($barWidth / ($titleBudget * 0.75))))
     $logoPx  = Get-LuneClamped ([int]$presets["${size}LogoPx"] * $kAll * $kIcon) 1  8
 
+    <#
+    How much room the row label and the header plan actually have.
+
+    Each layout used to hardcode a fraction of the bar. That truncated a label
+    while the value beside it sat in a box far larger than its text, and the
+    header had no way to know where the status dot started - so a bounded title
+    pushed the plan straight onto it.
+    #>
+    $emPerChar  = 0.62
+    $rowValueW  = [int][Math]::Ceiling(9 * $emPerChar * $labelFS)          # "100% used"
+    $rowLabelW  = [Math]::Max(40, $barWidth - $rowValueW - [int]($labelFS / 2))
+    # Title is the literal "Claude". The dot sits Pad+16 in from the right.
+    # Bold, and a capital C: 0.62 under-measured it and the plan clipped the dot
+    # by 9px on the Small panel at FontScale 2.0.
+    $titleW     = [int][Math]::Ceiling(6 * 0.72 * $titleFS)
+    # Same expression LuneMark.inc uses, so the two cannot disagree.
+    $logoOffset = if ($config['ShowLogo'] -eq '0') { 0 } else { (11 * $logoPx) + 9 }
+    # 22, not 18: the dot is 8 wide and a wide monospace title still grazed it.
+    $headPlanW  = [Math]::Max(24, $width - $pad - 22 - ($pad + $logoOffset + $titleW + 8))
+
     # The row pitch follows the chosen typeface, not an assumption about it.
     $lineRatio = Get-LuneLineRatio $config['FontFace']
     $titleH = Get-LuneLineHeight $titleFS $lineRatio
@@ -651,6 +671,16 @@ function Write-LuneResolvedLayout {
 
     $lines += @(
         '; ---- geometry, derived from the size preset and the scale axes -------',
+        # Row and header widths, worked out here rather than guessed as fractions
+        # in each layout. A fixed 62/38 split truncated "Weekly - all models" while
+        # "2% used" sat in a box twice the size it needed, and it could not know how
+        # much room the header had left before the status dot.
+        #
+        # 0.62 em per character is wide enough for the proportional faces people
+        # pick and close enough for monospace. Widest value string is "100% used".
+        "RowValueW=$rowValueW",
+        "RowLabelW=$rowLabelW",
+        "HeadPlanW=$headPlanW",
         "W=$width",
         "Pad=$pad",
         "BarW=$barWidth",
