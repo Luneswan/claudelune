@@ -22,8 +22,7 @@ measurement of the panel.
 | Labels and bars | Adds reset countdowns | Adds the spend-rate chart |
 
 There is a fourth layout, Wide, which is one horizontal band for the edge of a
-screen. Seven themes ship with it, and a settings window that can change every
-measurement of the panel.
+screen.
 
 ## The spend-rate chart
 
@@ -46,12 +45,7 @@ A fresh install starts as mostly empty troughs and fills in from there.
 | [Rainmeter](https://www.rainmeter.net/) | 4.5 or newer |
 | [Claude Code](https://claude.com/claude-code) | installed and signed in |
 
-Not signed in yet: right-click the panel, **Sign in to Claude Code…**. That runs
-`claude auth login` and opens the browser. From then on the panel finds the
-session on its own.
-
-Do it in a terminal, not just the desktop app. The app keeps its session in its
-own encrypted store, and nothing else can read that.
+Signing in is one step and it is below.
 
 ## Install
 
@@ -65,10 +59,48 @@ Or download `ClaudeLune.rmskin` from
 [Releases](https://github.com/luneswan/claudelune/releases) and double-click it.
 Rainmeter takes it from there.
 
-## Layouts
+## Signing in
 
-Right-click the panel to switch layout, theme or opacity, or to hide a row your
-plan does not support.
+There is no API key and no token to paste anywhere. The panel reads the session
+Claude Code already keeps on your machine.
+
+If you already use `claude` in a terminal, you are done. Install it and the first
+poll lands within about ten seconds.
+
+If not, right-click the panel and pick **Sign in to Claude Code…**. That opens a
+terminal running `claude auth login`, which sends you to the browser. Finish
+there and the panel picks the new session up on its next poll, without a refresh.
+
+Do it in a terminal, not just the desktop app. The app keeps its session in its
+own encrypted store and nothing else can read it, so a panel next to a
+signed-in desktop app will still say `signed out`.
+
+`claude auth status` says whether you are signed in.
+
+## Using it
+
+Left-click the status dot to force a poll. Left-click the word Claude to open
+your usage page in the browser.
+
+Everything else is on the right-click menu.
+
+| Menu item | Does |
+|---|---|
+| Refresh now | Polls immediately, ignoring the backoff |
+| Sign in to Claude Code… | Opens a terminal running `claude auth login` |
+| Settings… | The settings window |
+| Open Claude usage page | claude.ai/settings/usage |
+| New Claude chat | A fresh chat in the browser |
+| Small / Normal / Wide / Large | Layout |
+| Dark … iOS | Theme |
+| Solid / Normal / Translucent / Ghost | Opacity |
+| Show or hide the per-model row | For plans without a separate model allowance |
+| Open data folder | `%APPDATA%\ClaudeLune`, where the cache lives |
+| Edit settings file | Opens `LuneSettings.inc` in Notepad |
+
+A tick marks whatever is currently selected.
+
+## Layouts
 
 | Layout | Roughly | What it shows |
 |---|---|---|
@@ -122,6 +154,16 @@ Dark, Amoled, Glass, Light, Clay, Matrix, iOS.
 
 Bars change colour as they fill, calm while you have headroom and warmer as a
 limit approaches, using whichever palette is active.
+
+## Uninstall
+
+Right-click the panel → **Unload skin**, then delete the folder Rainmeter put it
+in (`Documents\Rainmeter\Skins\ClaudeLune`). The cache under
+`%APPDATA%\ClaudeLune` is the only other thing it writes; delete that too if you
+want it gone completely.
+
+Nothing is installed outside those two folders, and nothing touches Claude Code's
+own files.
 
 ## Privacy
 
